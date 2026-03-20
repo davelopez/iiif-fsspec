@@ -1,0 +1,75 @@
+[project]
+name = "iiif-fsspec"
+version = "0.1.0"
+description = "Filesystem Spec (fsspec) plugin for IIIF (International Image Interoperability Framework) resources"
+readme = "README.md"
+license = "MIT"
+license-files = ["LICENSE"]
+authors = [{ name = "davelopez" }]
+requires-python = ">=3.10"
+keywords = ["fsspec", "iiif", "images", "filesystem", "galaxy"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
+]
+dependencies = ["fsspec>=2026.2.0", "httpx>=0.28.1", "piffle>=0.7.0"]
+
+[project.urls]
+Homepage = "https://github.com/davelopez/iiif-fsspec"
+Repository = "https://github.com/davelopez/iiif-fsspec"
+Issues = "https://github.com/davelopez/iiif-fsspec/issues"
+
+[project.entry-points."fsspec.specs"]
+iiif = "iiif_fsspec:IIIFFileSystem"
+
+[build-system]
+requires = ["uv_build>=0.10.8,<0.11.0"]
+build-backend = "uv_build"
+
+[dependency-groups]
+dev = [
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+    "pytest-asyncio>=1.3.0",
+    "pytest-cov>=6.0.0",
+    "pytest-httpx>=0.35.0",
+    "ruff>=0.15.4",
+]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "UP", "B", "SIM", "ANN"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["ANN"]
+
+[tool.mypy]
+strict = true
+warn_return_any = true
+warn_unused_configs = true
+packages = ["iiif_fsspec"]
+
+[[tool.mypy.overrides]]
+module = ["fsspec", "fsspec.*"]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["iiif_fsspec.filesystem", "iiif_fsspec.iiif_file"]
+disallow_subclassing_any = false
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+addopts = "-v --strict-markers"
