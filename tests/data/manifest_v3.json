@@ -1,0 +1,84 @@
+{
+    "@context": "http://iiif.io/api/presentation/3/context.json",
+    "id": "https://example.org/iiif/v3/manifest",
+    "type": "Manifest",
+    "label": {
+        "en": [
+            "Sample v3 Manifest"
+        ]
+    },
+    "items": [
+        {
+            "id": "https://example.org/iiif/v3/canvas/1",
+            "type": "Canvas",
+            "label": {
+                "en": [
+                    "Canvas One"
+                ]
+            },
+            "width": 2000,
+            "height": 1500,
+            "items": [
+                {
+                    "id": "https://example.org/iiif/v3/page/1",
+                    "type": "AnnotationPage",
+                    "items": [
+                        {
+                            "id": "https://example.org/iiif/v3/annotation/1",
+                            "type": "Annotation",
+                            "motivation": "painting",
+                            "body": {
+                                "id": "https://images.example.org/iiif/2/abc123/full/max/0/default.jpg",
+                                "type": "Image",
+                                "format": "image/jpeg",
+                                "service": [
+                                    {
+                                        "id": "https://images.example.org/iiif/2/abc123",
+                                        "type": "ImageService2",
+                                        "profile": "http://iiif.io/api/image/2/level2.json"
+                                    }
+                                ]
+                            },
+                            "target": "https://example.org/iiif/v3/canvas/1"
+                        }
+                    ]
+                }
+            ]
+        },
+        {
+            "id": "https://example.org/iiif/v3/canvas/2",
+            "type": "Canvas",
+            "label": {
+                "en": [
+                    "Canvas Two"
+                ]
+            },
+            "width": 1800,
+            "height": 1400,
+            "items": [
+                {
+                    "id": "https://example.org/iiif/v3/page/2",
+                    "type": "AnnotationPage",
+                    "items": [
+                        {
+                            "id": "https://example.org/iiif/v3/annotation/2",
+                            "type": "Annotation",
+                            "motivation": "painting",
+                            "body": {
+                                "id": "https://images.example.org/iiif/2/def456/full/max/0/default.jpg",
+                                "type": "Image",
+                                "format": "image/jpeg",
+                                "service": {
+                                    "id": "https://images.example.org/iiif/2/def456",
+                                    "type": "ImageService2",
+                                    "profile": "http://iiif.io/api/image/2/level2.json"
+                                }
+                            },
+                            "target": "https://example.org/iiif/v3/canvas/2"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}

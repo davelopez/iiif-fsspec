@@ -1,0 +1,64 @@
+{
+    "@context": "http://iiif.io/api/presentation/2/context.json",
+    "@id": "https://example.org/iiif/v2/manifest",
+    "@type": "sc:Manifest",
+    "label": "Sample v2 Manifest",
+    "sequences": [
+        {
+            "@id": "https://example.org/iiif/v2/manifest/sequence/normal",
+            "@type": "sc:Sequence",
+            "canvases": [
+                {
+                    "@id": "https://example.org/iiif/v2/canvas/1",
+                    "@type": "sc:Canvas",
+                    "label": "Page 1",
+                    "height": 1600,
+                    "width": 1200,
+                    "images": [
+                        {
+                            "@id": "https://example.org/iiif/v2/annotation/p1-image",
+                            "@type": "oa:Annotation",
+                            "motivation": "sc:painting",
+                            "resource": {
+                                "@id": "https://images.example.org/iiif/2/ghi789/full/full/0/default.jpg",
+                                "@type": "dctypes:Image",
+                                "format": "image/jpeg",
+                                "service": {
+                                    "@context": "http://iiif.io/api/image/2/context.json",
+                                    "@id": "https://images.example.org/iiif/2/ghi789",
+                                    "profile": "http://iiif.io/api/image/2/level2.json"
+                                }
+                            },
+                            "on": "https://example.org/iiif/v2/canvas/1"
+                        }
+                    ]
+                },
+                {
+                    "@id": "https://example.org/iiif/v2/canvas/2",
+                    "@type": "sc:Canvas",
+                    "label": "Page 2",
+                    "height": 1700,
+                    "width": 1300,
+                    "images": [
+                        {
+                            "@id": "https://example.org/iiif/v2/annotation/p2-image",
+                            "@type": "oa:Annotation",
+                            "motivation": "sc:painting",
+                            "resource": {
+                                "@id": "https://images.example.org/iiif/2/jkl012/full/full/0/default.jpg",
+                                "@type": "dctypes:Image",
+                                "format": "image/jpeg",
+                                "service": {
+                                    "@context": "http://iiif.io/api/image/2/context.json",
+                                    "@id": "https://images.example.org/iiif/2/jkl012",
+                                    "profile": "http://iiif.io/api/image/2/level2.json"
+                                }
+                            },
+                            "on": "https://example.org/iiif/v2/canvas/2"
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+}
