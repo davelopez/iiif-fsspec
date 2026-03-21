@@ -72,4 +72,7 @@ disallow_subclassing_any = false
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-addopts = "-v --strict-markers"
+addopts = "-v --strict-markers -m 'not integration'"
+markers = [
+    "integration: live-network integration tests against real IIIF services",
+]

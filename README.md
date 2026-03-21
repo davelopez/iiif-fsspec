@@ -158,7 +158,17 @@ uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 uv run mypy
 uv run pytest --cov=iiif_fsspec --cov-report=term-missing
+
+# Run live-network integration tests (opt-in, requires network access)
+uv run pytest -m integration -v
 ```
+
+CI test strategy:
+
+- Default CI runs fast deterministic tests and excludes live integration tests.
+- A separate `Integration` workflow runs real-network tests against:
+	`https://iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json`.
+- The integration workflow is triggered manually (`workflow_dispatch`) and on a low-frequency schedule.
 
 Pre-commit hooks are configured in `.pre-commit-config.yaml`.
 
