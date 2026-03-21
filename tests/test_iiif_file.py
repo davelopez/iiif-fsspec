@@ -35,6 +35,11 @@ def _image_callback(request: httpx.Request) -> httpx.Response:
 
 def _register_manifest_and_image(httpx_mock: HTTPXMock, sample_manifest_v3: dict) -> None:
     httpx_mock.add_response(method="GET", url=MANIFEST_URL, json=sample_manifest_v3)
+    httpx_mock.add_response(
+        method="HEAD",
+        url=IMAGE_URL_1,
+        headers={"Content-Length": str(len(IMAGE_BYTES))},
+    )
     httpx_mock.add_callback(_image_callback, method="GET", url=IMAGE_URL_1)
 
 

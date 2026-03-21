@@ -15,6 +15,14 @@ MANIFEST_URL = "https://example.org/iiif/manifest.json"
 IMAGE_URL_1 = "https://images.example.org/iiif/2/abc123/full/max/0/default.jpg"
 
 
+def _mock_image_size(httpx_mock: HTTPXMock, size: int = 6) -> None:
+    httpx_mock.add_response(
+        method="HEAD",
+        url=IMAGE_URL_1,
+        headers={"Content-Length": str(size)},
+    )
+
+
 def _prime_manifest_cache(iiif_fs: IIIFFileSystem, sample_manifest_v3: dict) -> None:
     iiif_fs._manifest_cache[MANIFEST_URL] = parse_manifest(sample_manifest_v3)
 
@@ -51,7 +59,7 @@ def test_info_canvas(
     iiif_fs: IIIFFileSystem,
     sample_manifest_v3: dict,
 ) -> None:
-    del httpx_mock
+    _mock_image_size(httpx_mock)
     _prime_manifest_cache(iiif_fs, sample_manifest_v3)
 
     canvas_path = f"{MANIFEST_PATH}/canvas-one.jpg"
@@ -97,6 +105,7 @@ def test_open_readonly(
     iiif_fs: IIIFFileSystem,
     sample_manifest_v3: dict,
 ) -> None:
+    _mock_image_size(httpx_mock, size=3)
     _prime_manifest_cache(iiif_fs, sample_manifest_v3)
     httpx_mock.add_response(method="GET", url=IMAGE_URL_1, content=b"abc")
 
