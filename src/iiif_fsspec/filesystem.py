@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import os
+import re
 from typing import cast
 
 from fsspec.asyn import AsyncFileSystem
 from fsspec.spec import AbstractBufferedFile
+from fsspec.utils import glob_translate
 
 from iiif_fsspec.client import AsyncIIIFClient
 from iiif_fsspec.exceptions import InvalidPathError
@@ -117,6 +120,78 @@ class IIIFFileSystem(AsyncFileSystem):
 
         image_url = _canvas_image_url(canvas)
         return await self._client.get_bytes(image_url, start=start, end=end)
+
+    async def _glob(
+        self,
+        path: str,
+        maxdepth: int | None = None,
+        **kwargs: object,
+    ) -> list[str] | dict[str, IIIFEntryInfo]:
+        """Find files by glob-matching while normalizing IIIF protocol paths."""
+        if maxdepth is not None and maxdepth < 1:
+            raise ValueError("maxdepth must be at least 1")
+
+        detail = bool(kwargs.pop("detail", False))
+        ends_with_slash = path.endswith("/")
+        stripped_pattern = self._strip_protocol(path)
+
+        has_magic = any(token in stripped_pattern for token in ("*", "?", "["))
+        if not has_magic:
+            if await self._exists(path, **kwargs):
+                if detail:
+                    info = await self._info(path, **kwargs)
+                    return {str(info["name"]): info}
+                return [path]
+            return {} if detail else []
+
+        idx_star = stripped_pattern.find("*") if "*" in stripped_pattern else len(stripped_pattern)
+        idx_qmark = stripped_pattern.find("?") if "?" in stripped_pattern else len(stripped_pattern)
+        idx_brace = stripped_pattern.find("[") if "[" in stripped_pattern else len(stripped_pattern)
+        min_idx = min(idx_star, idx_qmark, idx_brace)
+
+        if "/" in stripped_pattern[:min_idx]:
+            min_idx = stripped_pattern[:min_idx].rindex("/")
+            root = stripped_pattern[: min_idx + 1]
+            depth = stripped_pattern[min_idx + 1 :].count("/") + 1
+        else:
+            root = ""
+            depth = stripped_pattern[min_idx + 1 :].count("/") + 1
+
+        if "**" in stripped_pattern:
+            if maxdepth is not None:
+                idx_double_stars = stripped_pattern.find("**")
+                depth_double_stars = stripped_pattern[idx_double_stars:].count("/") + 1
+                depth = depth - depth_double_stars + maxdepth
+            else:
+                depth = None
+
+        allpaths = await self._find(root, maxdepth=depth, withdirs=True, detail=True, **kwargs)
+
+        pattern = re.compile(glob_translate(stripped_pattern + ("/" if ends_with_slash else "")))
+        out: dict[str, IIIFEntryInfo] = {}
+        for candidate_path, info in sorted(allpaths.items()):
+            normalized = strip_protocol(candidate_path)
+            suffix = "/" if ends_with_slash and info["type"] == "directory" else ""
+            if pattern.match(normalized + suffix):
+                out[candidate_path] = info
+
+        if detail:
+            return out
+        return list(out)
+
+    async def _get_file(self, rpath: str, lpath: str, **kwargs: object) -> None:
+        """Copy a single canvas file to a local path."""
+        del kwargs
+        if await self._isdir(rpath):
+            os.makedirs(lpath, exist_ok=True)
+            return
+
+        data = await self._cat_file(rpath)
+        parent = os.path.dirname(lpath)
+        if parent:
+            os.makedirs(parent, exist_ok=True)
+        with open(lpath, "wb") as handle:
+            handle.write(data)
 
     def _open(
         self,
