@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-DEFAULT_MANIFEST_URL = "https://api.irht.cnrs.fr/ark:/63955/fbkub82u5bw7/manifest.json"
+DEFAULT_MANIFEST_URL = "https://iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json"
 
 
 # Allow running examples directly from a source checkout.
