@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -29,6 +30,7 @@ class AsyncIIIFClient:
         self._timeout = timeout
         self._headers = headers or {}
         self._client: httpx.AsyncClient | None = None
+        self._size_cache: dict[str, int] = {}
 
     async def get_json(self, url: str) -> dict[str, Any]:
         """Fetch and parse JSON content from a URL.
@@ -86,6 +88,32 @@ class AsyncIIIFClient:
         """Fetch IIIF image ``info.json`` for a service endpoint."""
         info_url = f"{service_url.rstrip('/')}/info.json"
         return await self.get_json(info_url)
+
+    async def get_size(self, url: str) -> int | None:
+        """Resolve remote content length in bytes, when exposed by the server."""
+        cached = self._size_cache.get(url)
+        if cached is not None:
+            return cached
+
+        try:
+            head_response = await self._request("HEAD", url)
+            size = _parse_content_length(head_response)
+            if size is not None:
+                self._size_cache[url] = size
+                return size
+        except ImageFetchError:
+            pass
+
+        try:
+            probe_response = await self._request("GET", url, headers={"Range": "bytes=0-0"})
+            size = _parse_content_range_total(probe_response)
+            if size is not None:
+                self._size_cache[url] = size
+                return size
+        except ImageFetchError:
+            pass
+
+        return None
 
     async def close(self) -> None:
         """Close the underlying httpx client."""
@@ -179,3 +207,30 @@ def _build_range_header(start: int | None, end: int | None) -> str | None:
         return f"bytes={start}-"
 
     return f"bytes={start}-{end - 1}"
+
+
+def _parse_content_length(response: httpx.Response) -> int | None:
+    """Parse Content-Length from response headers."""
+    header = response.headers.get("Content-Length")
+    if header is None:
+        return None
+    try:
+        value = int(header)
+    except ValueError:
+        return None
+    return value if value >= 0 else None
+
+
+def _parse_content_range_total(response: httpx.Response) -> int | None:
+    """Parse total object size from a Content-Range header."""
+    header = response.headers.get("Content-Range")
+    if header is None:
+        return None
+    match = re.match(r"bytes\s+\d+-\d+/(\d+)", header)
+    if match is None:
+        return None
+    try:
+        value = int(match.group(1))
+    except ValueError:
+        return None
+    return value if value >= 0 else None

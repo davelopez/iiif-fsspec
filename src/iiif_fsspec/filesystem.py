@@ -63,7 +63,9 @@ class IIIFFileSystem(AsyncFileSystem):
         if canvas is None:
             raise InvalidPathError(f"Canvas not found for path: {path}")
 
-        return _canvas_entry(_ensure_protocol_path(path), canvas)
+        image_url = _canvas_image_url(canvas)
+        exact_size = await self._client.get_size(image_url)
+        return _canvas_entry(_ensure_protocol_path(path), canvas, size=exact_size)
 
     async def _ls(
         self,
@@ -183,24 +185,27 @@ def _canvas_image_url(canvas: CanvasInfo) -> str:
     return canvas.image_url
 
 
-def _canvas_entry(path: str, canvas: CanvasInfo) -> IIIFEntryInfo:
+def _canvas_entry(path: str, canvas: CanvasInfo, *, size: int | None = None) -> IIIFEntryInfo:
     """Convert canvas metadata into fsspec-compatible entry info."""
     estimated_size = 0
     if canvas.width is not None and canvas.height is not None:
         estimated_size = max(canvas.width * canvas.height, 1)
+
+    resolved_size = size if size is not None else estimated_size
 
     return IIIFEntryInfo(
         cast(
             dict[str, object],
             {
                 "name": path,
-                "size": estimated_size,
+                "size": resolved_size,
                 "type": "file",
                 "iiif_id": canvas.id,
                 "iiif_label": canvas.label,
                 "width": canvas.width,
                 "height": canvas.height,
                 "mimetype": f"image/{canvas.format}",
+                "estimated_size": estimated_size,
             },
         )
     )
