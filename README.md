@@ -106,6 +106,31 @@ uv run python examples/browse_manifest.py --manifest-url https://example.org/iii
 Version detection uses manifest metadata (`@context`, `type`, and `@type`) and dispatches to the
 appropriate parser.
 
+## Security Notes
+
+`iiif-fsspec` fetches manifests, image resources, and `info.json` endpoints from remote servers.
+Treat manifest content as a source of outbound network locations, not just metadata.
+
+Current network policy:
+
+- Only `http` and `https` resource URLs are accepted.
+- Redirects are followed only through an explicit policy in the HTTP client.
+- `http -> https` redirects are allowed.
+- `https -> http` redirects are rejected.
+- Non-HTTP(S) redirect targets are rejected.
+
+Operational implications:
+
+- A manifest can point to image or IIIF service URLs on arbitrary hosts.
+- Redirects can move a request to a different host, as long as the redirect stays within the
+	allowed transport policy above.
+- This package is intended for public IIIF resources and does not add host allowlisting or SSRF
+	protections on top of normal URL validation.
+
+If you process manifests from untrusted sources or run this library in a sensitive environment,
+consider wrapping it with your own outbound network controls, such as host allowlists, egress
+filtering, or sandboxing.
+
 ## Architecture
 
 Main modules:

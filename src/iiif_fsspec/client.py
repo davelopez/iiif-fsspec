@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 
 from iiif_fsspec.exceptions import ImageFetchError, ManifestParseError
+
+_MAX_REDIRECTS = 10
 
 
 class AsyncIIIFClient:
@@ -99,11 +102,27 @@ class AsyncIIIFClient:
         """Issue an HTTP request and normalize errors."""
         client = self._get_client()
         try:
-            response = await client.request(method, url, headers=headers)
-            response.raise_for_status()
+            _validate_url_scheme(url)
+            request = client.build_request(method, url, headers=headers)
+
+            for _ in range(_MAX_REDIRECTS + 1):
+                response = await client.send(request, follow_redirects=False)
+                if not response.has_redirect_location:
+                    response.raise_for_status()
+                    return response
+
+                next_request = response.next_request
+                if next_request is None:
+                    response.raise_for_status()
+                    return response
+
+                _validate_redirect_target(str(request.url), str(next_request.url))
+                await response.aread()
+                request = next_request
+
+            raise ImageFetchError(f"Too many redirects while fetching IIIF resource: {url}")
         except httpx.HTTPError as exc:
             raise ImageFetchError(f"Failed to fetch IIIF resource: {url}") from exc
-        return response
 
     def _get_client(self) -> httpx.AsyncClient:
         """Lazily create and return the shared ``httpx.AsyncClient``."""
@@ -114,6 +133,25 @@ class AsyncIIIFClient:
                 limits=httpx.Limits(max_connections=20, max_keepalive_connections=10),
             )
         return self._client
+
+
+def _validate_url_scheme(url: str) -> None:
+    """Reject unsupported URL schemes before making outbound requests."""
+    scheme = urlsplit(url).scheme.lower()
+    if scheme not in {"http", "https"}:
+        raise ImageFetchError(f"Unsupported URL scheme for IIIF resource: {url}")
+
+
+def _validate_redirect_target(source_url: str, target_url: str) -> None:
+    """Allow safe redirects while rejecting insecure transport downgrades."""
+    _validate_url_scheme(target_url)
+
+    source = urlsplit(source_url)
+    target = urlsplit(target_url)
+    if source.scheme.lower() == "https" and target.scheme.lower() != "https":
+        raise ImageFetchError(
+            f"Refusing insecure redirect for IIIF resource: {source_url} -> {target_url}"
+        )
 
 
 def _build_range_header(start: int | None, end: int | None) -> str | None:

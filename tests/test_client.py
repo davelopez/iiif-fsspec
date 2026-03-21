@@ -39,6 +39,41 @@ async def test_get_bytes_success(httpx_mock: HTTPXMock) -> None:
 
 
 @pytest.mark.asyncio
+async def test_get_bytes_follows_redirect(httpx_mock: HTTPXMock) -> None:
+    client = AsyncIIIFClient()
+    httpx_mock.add_response(
+        method="GET",
+        url="http://example.org/image.jpg",
+        status_code=301,
+        headers={"Location": "https://example.org/image.jpg"},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url="https://example.org/image.jpg",
+        content=b"abcdef",
+    )
+
+    payload = await client.get_bytes("http://example.org/image.jpg")
+    assert payload == b"abcdef"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_get_bytes_rejects_https_to_http_redirect(httpx_mock: HTTPXMock) -> None:
+    client = AsyncIIIFClient()
+    httpx_mock.add_response(
+        method="GET",
+        url="https://example.org/image.jpg",
+        status_code=301,
+        headers={"Location": "http://example.org/image.jpg"},
+    )
+
+    with pytest.raises(ImageFetchError, match="Refusing insecure redirect"):
+        await client.get_bytes("https://example.org/image.jpg")
+    await client.close()
+
+
+@pytest.mark.asyncio
 async def test_get_bytes_range_header(httpx_mock: HTTPXMock) -> None:
     client = AsyncIIIFClient()
     httpx_mock.add_response(
@@ -96,4 +131,13 @@ async def test_get_image_info(httpx_mock: HTTPXMock) -> None:
 
     data = await client.get_image_info("https://images.example.org/iiif/2/abc")
     assert data["id"] == "https://images.example.org/iiif/2/abc"
+    await client.close()
+
+
+@pytest.mark.asyncio
+async def test_rejects_non_http_url_scheme() -> None:
+    client = AsyncIIIFClient()
+
+    with pytest.raises(ImageFetchError, match="Unsupported URL scheme"):
+        await client.get_bytes("ftp://example.org/image.jpg")
     await client.close()
