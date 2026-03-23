@@ -3,10 +3,21 @@
 `iiif-fsspec` is a read-only [`fsspec`](https://filesystem-spec.readthedocs.io/) plugin for
 [IIIF](https://iiif.io/) (International Image Interoperability Framework) resources.
 
-It exposes a IIIF manifest as a directory and canvas images as files:
+It exposes a IIIF manifest as a directory and canvas images as files.
 
-- `iiif://example.org/iiif/manifest.json` -> directory
-- `iiif://example.org/iiif/manifest.json/canvas-one.jpg` -> file
+Two path styles are accepted interchangeably:
+
+| Style | Example |
+|-------|---------|
+| `iiif://` (registered fsspec protocol) | `iiif://example.org/iiif/manifest.json` |
+| `https://` / `http://` (raw manifest URL) | `https://example.org/iiif/manifest.json` |
+
+Returned paths always preserve the style of the caller's input:
+
+- `iiif://example.org/iiif/manifest.json` → directory
+- `iiif://example.org/iiif/manifest.json/canvas-one.jpg` → file
+- `https://example.org/iiif/manifest.json` → directory
+- `https://example.org/iiif/manifest.json/canvas-one.jpg` → file
 
 The plugin supports both IIIF Presentation API v2 and v3 manifests with automatic version
 detection.
@@ -45,11 +56,13 @@ import fsspec
 
 fs = fsspec.filesystem("iiif")
 
-# List canvases from a manifest
-entries = fs.ls("iiif://example.org/iiif/manifest.json", detail=True)
+# Both https:// and iiif:// paths are accepted; returned names mirror the input style.
+
+# List canvases using a raw manifest URL
+entries = fs.ls("https://example.org/iiif/manifest.json", detail=True)
 
 # Read a canvas image
-with fs.open("iiif://example.org/iiif/manifest.json/canvas-one.jpg", "rb") as handle:
+with fs.open("https://example.org/iiif/manifest.json/canvas-one.jpg", "rb") as handle:
 	image_bytes = handle.read()
 ```
 
@@ -62,10 +75,11 @@ from iiif_fsspec import IIIFFileSystem
 
 fs = IIIFFileSystem()
 
-paths = fs.ls("iiif://example.org/iiif/manifest.json")
-print(paths)
+# Using a raw https:// manifest URL
+paths = fs.ls("https://example.org/iiif/manifest.json")
+print(paths)  # ['https://example.org/iiif/manifest.json/canvas-one.jpg', ...]
 
-chunk = fs.cat_file("iiif://example.org/iiif/manifest.json/canvas-one.jpg", start=0, end=1024)
+chunk = fs.cat_file("https://example.org/iiif/manifest.json/canvas-one.jpg", start=0, end=1024)
 print(len(chunk))
 ```
 
@@ -74,7 +88,15 @@ print(len(chunk))
 ```python
 import fsspec
 
+# Use the iiif:// scheme with fsspec.open (routes to IIIFFileSystem via entry-point)
 with fsspec.open("iiif://example.org/iiif/manifest.json/canvas-one.jpg", "rb") as handle:
+	first_kb = handle.read(1024)
+
+# Or instantiate IIIFFileSystem directly with a plain https:// URL
+from iiif_fsspec import IIIFFileSystem
+
+fs = IIIFFileSystem()
+with fs.open("https://example.org/iiif/manifest.json/canvas-one.jpg", "rb") as handle:
 	first_kb = handle.read(1024)
 ```
 
