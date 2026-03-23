@@ -10,7 +10,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
-from common import DEFAULT_MANIFEST_URL, create_fs, to_iiif_path
+from common import DEFAULT_MANIFEST_URL, to_iiif_path
+
+from iiif_fsspec.filesystem import IIIFFileSystem
 
 
 def parse_args() -> argparse.Namespace:
@@ -39,7 +41,7 @@ def main() -> None:
     args = parse_args()
     manifest_path = to_iiif_path(args.manifest_url)
 
-    fs = create_fs()
+    fs = IIIFFileSystem()
     entries = fs.ls(manifest_path, detail=True)
     if not entries:
         raise RuntimeError("Manifest contains no canvases")

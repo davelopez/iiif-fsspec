@@ -302,7 +302,7 @@ def _collection_member_entry(
     entry["iiif_label"] = member.label
     entry["iiif_resource_type"] = member.kind
 
-    return IIIFEntryInfo(cast(dict[str, object], entry))
+    return IIIFEntryInfo(entry)
 
 
 def _make_member_path(parent_path: str, member: CollectionMemberInfo) -> str:
