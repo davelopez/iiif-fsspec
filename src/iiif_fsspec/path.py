@@ -9,6 +9,7 @@ from urllib.parse import urlsplit, urlunsplit
 from iiif_fsspec.types import CanvasInfo
 
 _PROTOCOL = "iiif://"
+_CANVAS_EXTENSIONS = {"jpg", "jpeg", "png", "tif", "tiff", "webp"}
 
 
 def strip_protocol(path: str) -> str:
@@ -72,8 +73,12 @@ def parse_path(path: str) -> tuple[str, str | None]:
         if len(parts) == 1:
             manifest_parts = parts
         else:
-            manifest_parts = parts[:-1]
-            canvas_name = parts[-1]
+            last_part = parts[-1]
+            if _looks_like_canvas_filename(last_part):
+                manifest_parts = parts[:-1]
+                canvas_name = last_part
+            else:
+                manifest_parts = parts
     elif manifest_idx == len(parts) - 1:
         manifest_parts = parts
     else:
@@ -85,6 +90,14 @@ def parse_path(path: str) -> tuple[str, str | None]:
         (split.scheme, split.netloc, manifest_path, split.query, split.fragment)
     )
     return manifest_url, canvas_name
+
+
+def _looks_like_canvas_filename(segment: str) -> bool:
+    """Return True when the final segment appears to be an image filename."""
+    if "." not in segment:
+        return False
+    extension = segment.rsplit(".", maxsplit=1)[-1].lower()
+    return extension in _CANVAS_EXTENSIONS
 
 
 def sanitize_filename(name: str) -> str:

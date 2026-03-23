@@ -6,17 +6,29 @@ import pytest
 
 from iiif_fsspec.exceptions import ManifestParseError
 from iiif_fsspec.manifest import (
+    _detect_member_kind,
     _extract_service_id,
     _extract_v3_label,
     _image_format_from_body,
+    detect_resource_kind,
     detect_version,
     parse_manifest,
+    parse_resource,
 )
+from iiif_fsspec.types import CollectionInfo
 
 
 def test_detect_version_fallback_by_type_values() -> None:
     assert detect_version({"type": "Manifest"}) == 3
+    assert detect_version({"type": "Collection"}) == 3
     assert detect_version({"@type": "sc:Manifest"}) == 2
+    assert detect_version({"@type": "sc:Collection"}) == 2
+
+
+def test_detect_resource_kind_fallbacks() -> None:
+    assert detect_resource_kind({"type": "Manifest"}) == "manifest"
+    assert detect_resource_kind({"@type": "sc:Collection"}) == "collection"
+    assert detect_resource_kind({"collections": []}) == "collection"
 
 
 def test_extract_v3_label_shapes() -> None:
@@ -106,3 +118,28 @@ def test_parse_v3_parses_non_numeric_dimensions_as_none() -> None:
     assert len(manifest.canvases) == 1
     assert manifest.canvases[0].width is None
     assert manifest.canvases[0].height is None
+
+
+def test_parse_v2_collection_members_field_supported() -> None:
+    resource = parse_resource(
+        {
+            "@context": "http://iiif.io/api/presentation/2/context.json",
+            "@id": "https://example.org/collection",
+            "@type": "sc:Collection",
+            "label": "root",
+            "members": [
+                {
+                    "@id": "https://example.org/manifest/1",
+                    "@type": "sc:Manifest",
+                    "label": "m1",
+                }
+            ],
+        }
+    )
+    assert isinstance(resource, CollectionInfo)
+    assert len(resource.members) == 1
+    assert resource.members[0].kind == "manifest"
+
+
+def test_detect_member_kind_unknown_returns_none() -> None:
+    assert _detect_member_kind({"type": "Canvas"}) is None

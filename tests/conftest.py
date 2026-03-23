@@ -28,6 +28,13 @@ def sample_manifest_v2() -> dict:
 
 
 @pytest.fixture
+def sample_collection_v2() -> dict:
+    """Sample IIIF Presentation API v2 collection."""
+    fixture_path = Path(__file__).parent / "data" / "collection_v2.json"
+    return json.loads(fixture_path.read_text(encoding="utf-8"))
+
+
+@pytest.fixture
 async def mock_iiif_client(httpx_mock: HTTPXMock) -> AsyncGenerator[AsyncIIIFClient, None]:
     """Mock IIIF client backed by pytest-httpx."""
     del httpx_mock

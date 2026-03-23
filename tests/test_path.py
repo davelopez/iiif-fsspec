@@ -68,3 +68,21 @@ def test_parse_non_manifest_two_segment_path() -> None:
     manifest_url, canvas_name = parse_path("iiif://example.org/iiif/canvas-1.jpg")
     assert manifest_url == "https://example.org/iiif"
     assert canvas_name == "canvas-1.jpg"
+
+
+def test_parse_collection_style_path_without_json() -> None:
+    manifest_url, canvas_name = parse_path("iiif://example.org/iiif/collection/top")
+    assert manifest_url == "https://example.org/iiif/collection/top"
+    assert canvas_name is None
+
+
+def test_parse_collection_style_path_with_dotted_tail_not_canvas() -> None:
+    manifest_url, canvas_name = parse_path("iiif://example.org/iiif/collection/top.v1")
+    assert manifest_url == "https://example.org/iiif/collection/top.v1"
+    assert canvas_name is None
+
+
+def test_parse_non_manifest_path_with_known_image_extension() -> None:
+    manifest_url, canvas_name = parse_path("iiif://example.org/iiif/asset/page-001.webp")
+    assert manifest_url == "https://example.org/iiif/asset"
+    assert canvas_name == "page-001.webp"

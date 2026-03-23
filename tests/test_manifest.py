@@ -8,7 +8,13 @@ from pathlib import Path
 import pytest
 
 from iiif_fsspec.exceptions import ManifestParseError, UnsupportedVersionError
-from iiif_fsspec.manifest import detect_version, parse_manifest
+from iiif_fsspec.manifest import (
+    detect_resource_kind,
+    detect_version,
+    parse_manifest,
+    parse_resource,
+)
+from iiif_fsspec.types import CollectionInfo
 
 
 def _load_fixture(name: str) -> dict:
@@ -79,3 +85,53 @@ def test_multiple_canvases_extracted() -> None:
 def test_unsupported_version_error() -> None:
     with pytest.raises(UnsupportedVersionError):
         detect_version({"id": "https://example.org/no-context"})
+
+
+def test_parse_valid_v2_collection_resource() -> None:
+    data = _load_fixture("collection_v2.json")
+    resource = parse_resource(data)
+
+    assert isinstance(resource, CollectionInfo)
+    assert resource.version == 2
+    assert resource.label == "Top Collection"
+    assert len(resource.members) == 2
+    assert resource.members[0].kind == "collection"
+    assert resource.members[1].kind == "manifest"
+
+
+def test_detect_resource_kind_collection() -> None:
+    assert detect_resource_kind(_load_fixture("collection_v2.json")) == "collection"
+
+
+def test_parse_v3_manifest_without_top_level_type() -> None:
+    manifest = parse_manifest(
+        {
+            "@context": "http://iiif.io/api/presentation/3/context.json",
+            "id": "https://example.org/missing-type",
+            "label": {"en": ["Missing Type"]},
+            "items": [
+                {
+                    "id": "https://example.org/canvas/1",
+                    "type": "Canvas",
+                    "label": {"en": ["Canvas 1"]},
+                    "items": [
+                        {
+                            "type": "AnnotationPage",
+                            "items": [
+                                {
+                                    "type": "Annotation",
+                                    "body": {
+                                        "id": "https://example.org/image.jpg",
+                                        "type": "Image",
+                                    },
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+
+    assert manifest.version == 3
+    assert len(manifest.canvases) == 1

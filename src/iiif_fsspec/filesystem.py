@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
+from collections import OrderedDict
 from typing import cast
 
 from fsspec.asyn import AsyncFileSystem
@@ -11,9 +13,16 @@ from fsspec.spec import AbstractBufferedFile
 from iiif_fsspec.client import AsyncIIIFClient
 from iiif_fsspec.exceptions import InvalidPathError
 from iiif_fsspec.iiif_file import IIIFFile
-from iiif_fsspec.manifest import parse_manifest
-from iiif_fsspec.path import make_canvas_path, parse_path, sanitize_filename
-from iiif_fsspec.types import CanvasInfo, IIIFEntryInfo, ManifestInfo
+from iiif_fsspec.manifest import parse_resource
+from iiif_fsspec.path import make_canvas_path, parse_path, sanitize_filename, to_iiif_url
+from iiif_fsspec.types import (
+    CanvasInfo,
+    CollectionInfo,
+    CollectionMemberInfo,
+    IIIFEntryInfo,
+    ManifestInfo,
+    ResourceInfo,
+)
 
 
 class IIIFFileSystem(AsyncFileSystem):
@@ -30,12 +39,21 @@ class IIIFFileSystem(AsyncFileSystem):
         asynchronous: bool = False,
         loop: object = None,
         timeout: float = 30.0,
+        headers: dict[str, str] | None = None,
+        user_agent: str | None = None,
+        resource_alias_limit: int = 2048,
         **storage_options: object,
     ) -> None:
         """Initialize the IIIF filesystem."""
         super().__init__(asynchronous=asynchronous, loop=loop, **storage_options)
-        self._client = AsyncIIIFClient(timeout=timeout)
+        resolved_headers = dict(headers or {})
+        if user_agent and "User-Agent" not in resolved_headers:
+            resolved_headers["User-Agent"] = user_agent
+        self._client = AsyncIIIFClient(timeout=timeout, headers=resolved_headers)
         self._manifest_cache: dict[str, ManifestInfo] = {}
+        self._resource_cache: dict[str, ResourceInfo] = {}
+        self._resource_aliases: OrderedDict[str, str] = OrderedDict()
+        self._resource_alias_limit = max(int(resource_alias_limit), 1)
 
     @classmethod
     def _strip_protocol(cls, path: str) -> str:
@@ -86,13 +104,20 @@ class IIIFFileSystem(AsyncFileSystem):
                 return [info]
             return [str(info["name"])]
 
-        manifest = await self._get_manifest(manifest_url)
-        manifest_path = _ensure_protocol_path(path)
-
-        entries: list[IIIFEntryInfo] = []
-        for canvas in manifest.canvases:
-            canvas_path = make_canvas_path(manifest_path, canvas)
-            entries.append(_canvas_entry(canvas_path, canvas))
+        resource = await self._get_resource(manifest_url)
+        if isinstance(resource, CollectionInfo):
+            collection_path = _ensure_protocol_path(path)
+            entries: list[IIIFEntryInfo] = []
+            for member in resource.members:
+                member_path = _make_member_path(collection_path, member)
+                self._remember_resource_alias(to_iiif_url(member_path), member.id)
+                entries.append(_collection_member_entry(member_path, member.id, member))
+        else:
+            manifest_path = _ensure_protocol_path(path)
+            entries = []
+            for canvas in resource.canvases:
+                canvas_path = make_canvas_path(manifest_path, canvas)
+                entries.append(_canvas_entry(canvas_path, canvas))
 
         if detail:
             return entries
@@ -169,10 +194,43 @@ class IIIFFileSystem(AsyncFileSystem):
         if cached is not None:
             return cached
 
-        manifest_json = await self._client.get_json(manifest_url)
-        manifest = parse_manifest(manifest_json)
-        self._manifest_cache[manifest_url] = manifest
-        return manifest
+        resource = await self._get_resource(manifest_url)
+        if isinstance(resource, CollectionInfo):
+            raise InvalidPathError(f"Path does not resolve to manifest resource: {manifest_url}")
+
+        self._manifest_cache[manifest_url] = resource
+        return resource
+
+    async def _get_resource(self, resource_url: str) -> ResourceInfo:
+        """Fetch and cache parsed IIIF resources (manifest or collection)."""
+        resolved_url = self._resource_aliases.get(resource_url, resource_url)
+
+        cached = self._resource_cache.get(resolved_url)
+        if cached is not None:
+            self._resource_cache[resource_url] = cached
+            return cached
+
+        manifest_cached = self._manifest_cache.get(resolved_url)
+        if manifest_cached is not None:
+            self._resource_cache[resource_url] = manifest_cached
+            return manifest_cached
+
+        payload = await self._client.get_json(resolved_url)
+        resource = parse_resource(payload)
+        self._resource_cache[resolved_url] = resource
+        self._resource_cache[resource_url] = resource
+        if isinstance(resource, ManifestInfo):
+            self._manifest_cache[resolved_url] = resource
+            self._manifest_cache[resource_url] = resource
+        return resource
+
+    def _remember_resource_alias(self, alias_url: str, resolved_url: str) -> None:
+        """Store bounded alias mappings used for collection child path resolution."""
+        self._resource_aliases.pop(alias_url, None)
+        self._resource_aliases[alias_url] = resolved_url
+
+        if len(self._resource_aliases) > self._resource_alias_limit:
+            self._resource_aliases.popitem(last=False)
 
 
 def _ensure_protocol_path(path: str) -> str:
@@ -226,3 +284,31 @@ def _canvas_entry(path: str, canvas: CanvasInfo, *, size: int | None = None) -> 
             },
         )
     )
+
+
+def _collection_member_entry(
+    path: str,
+    member_id: str,
+    member: CollectionMemberInfo,
+) -> IIIFEntryInfo:
+    """Convert collection member metadata into a directory entry."""
+    entry: dict[str, object] = {
+        "name": path,
+        "size": 0,
+        "type": "directory",
+        "iiif_id": member_id,
+    }
+
+    entry["iiif_label"] = member.label
+    entry["iiif_resource_type"] = member.kind
+
+    return IIIFEntryInfo(cast(dict[str, object], entry))
+
+
+def _make_member_path(parent_path: str, member: CollectionMemberInfo) -> str:
+    """Create deterministic hierarchical child path for a collection member."""
+    slug_source = member.label or member.id.rsplit("/", maxsplit=1)[-1]
+    slug = sanitize_filename(slug_source)
+    digest = hashlib.sha1(member.id.encode("utf-8")).hexdigest()[:8]
+    filename = f"{member.kind}-{slug}-{digest}.json"
+    return f"{parent_path.rstrip('/')}/{filename}"

@@ -5,7 +5,14 @@ from __future__ import annotations
 from typing import Any, Literal, TypeAlias
 
 from iiif_fsspec.exceptions import ManifestParseError, UnsupportedVersionError
-from iiif_fsspec.types import CanvasInfo, ManifestInfo, ManifestParser
+from iiif_fsspec.types import (
+    CanvasInfo,
+    CollectionInfo,
+    CollectionMemberInfo,
+    ManifestInfo,
+    ManifestParser,
+    ResourceInfo,
+)
 
 V3LabelValue: TypeAlias = str | list[str] | dict[str, str | list[str]] | None
 ServiceValue: TypeAlias = dict[str, object] | list[object] | None
@@ -121,6 +128,49 @@ class V2ManifestParser(ManifestParser):
         return ManifestInfo(id=manifest_id, label=label, canvases=canvases, version=2)
 
 
+class V3CollectionParser:
+    """Parser for IIIF Presentation API v3 collections."""
+
+    def parse(self, data: dict[str, Any]) -> CollectionInfo:
+        """Parse a v3 collection into :class:`CollectionInfo`."""
+        collection_id = str(data.get("id") or "")
+        if not collection_id:
+            raise ManifestParseError("v3 collection missing 'id'")
+
+        label = _extract_v3_label(data.get("label"))
+        members_raw = data.get("items")
+        if not isinstance(members_raw, list):
+            members_raw = []
+
+        members = _parse_collection_members(members_raw, version=3)
+        return CollectionInfo(id=collection_id, label=label, members=members, version=3)
+
+
+class V2CollectionParser:
+    """Parser for IIIF Presentation API v2 collections."""
+
+    def parse(self, data: dict[str, Any]) -> CollectionInfo:
+        """Parse a v2 collection into :class:`CollectionInfo`."""
+        collection_id = str(data.get("@id") or data.get("id") or "")
+        if not collection_id:
+            raise ManifestParseError("v2 collection missing '@id'")
+
+        label_value = data.get("label")
+        if isinstance(label_value, list) and label_value:
+            label = str(label_value[0])
+        else:
+            label = str(label_value or "")
+
+        members_raw: list[Any] = []
+        for key in ("collections", "manifests", "members"):
+            value = data.get(key)
+            if isinstance(value, list):
+                members_raw.extend(value)
+
+        members = _parse_collection_members(members_raw, version=2)
+        return CollectionInfo(id=collection_id, label=label, members=members, version=2)
+
+
 def detect_version(data: dict[str, Any]) -> Literal[2, 3]:
     """Detect IIIF Presentation API version from a manifest dictionary."""
     context = data.get("@context")
@@ -132,19 +182,120 @@ def detect_version(data: dict[str, Any]) -> Literal[2, 3]:
     if "presentation/2" in context_text:
         return 2
 
-    if data.get("type") == "Manifest":
+    if data.get("type") in {"Manifest", "Collection"}:
         return 3
-    if data.get("@type") == "sc:Manifest":
+    if data.get("@type") in {"sc:Manifest", "sc:Collection"}:
         return 2
 
     raise UnsupportedVersionError("Could not detect supported IIIF Presentation version")
 
 
+def detect_resource_kind(data: dict[str, Any]) -> Literal["manifest", "collection"]:
+    """Detect whether payload represents a manifest or a collection."""
+    kind = str(data.get("type") or "")
+    legacy_kind = str(data.get("@type") or "")
+
+    if kind == "Manifest" or legacy_kind == "sc:Manifest":
+        return "manifest"
+    if kind == "Collection" or legacy_kind == "sc:Collection":
+        return "collection"
+
+    if isinstance(data.get("sequences"), list):
+        return "manifest"
+    if isinstance(data.get("items"), list):
+        items = data["items"]
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            item_type = str(item.get("type") or item.get("@type") or "")
+            if item_type in {"Manifest", "Collection", "sc:Manifest", "sc:Collection"}:
+                return "collection"
+            if item_type in {"Canvas", "sc:Canvas"}:
+                return "manifest"
+
+        # v3 manifests occasionally omit top-level ``type`` while still exposing
+        # canvas items; default these payloads to manifest for compatibility.
+        return "manifest"
+    if isinstance(data.get("collections"), list) or isinstance(data.get("manifests"), list):
+        return "collection"
+
+    raise ManifestParseError("Could not detect whether IIIF resource is Manifest or Collection")
+
+
 def parse_manifest(data: dict[str, Any]) -> ManifestInfo:
     """Parse a IIIF manifest with automatic version detection."""
+    resource = parse_resource(data)
+    if isinstance(resource, CollectionInfo):
+        raise ManifestParseError("Expected IIIF Manifest but received Collection")
+    return resource
+
+
+def parse_resource(data: dict[str, Any]) -> ResourceInfo:
+    """Parse a IIIF manifest or collection with automatic detection."""
     version = detect_version(data)
-    parser: ManifestParser = V3ManifestParser() if version == 3 else V2ManifestParser()
-    return parser.parse(data)
+    kind = detect_resource_kind(data)
+
+    if kind == "manifest":
+        parser: ManifestParser = V3ManifestParser() if version == 3 else V2ManifestParser()
+        return parser.parse(data)
+
+    collection_parser: V3CollectionParser | V2CollectionParser = (
+        V3CollectionParser() if version == 3 else V2CollectionParser()
+    )
+    return collection_parser.parse(data)
+
+
+def _parse_collection_members(
+    members_raw: list[Any],
+    *,
+    version: Literal[2, 3],
+) -> list[CollectionMemberInfo]:
+    """Parse lightweight member links from collection payloads."""
+    parsed: list[CollectionMemberInfo] = []
+    for member in members_raw:
+        if not isinstance(member, dict):
+            continue
+
+        member_id = str(member.get("id") or member.get("@id") or "")
+        if not member_id:
+            continue
+
+        member_kind = _detect_member_kind(member)
+        if member_kind is None:
+            continue
+
+        label = _extract_member_label(member, version=version, fallback=member_id)
+        parsed.append(CollectionMemberInfo(id=member_id, label=label, kind=member_kind))
+
+    return parsed
+
+
+def _detect_member_kind(member: dict[str, Any]) -> Literal["collection", "manifest"] | None:
+    """Detect collection member kind from v2/v3 type values."""
+    raw_kind = str(member.get("type") or member.get("@type") or "")
+    if raw_kind in {"Collection", "sc:Collection"}:
+        return "collection"
+    if raw_kind in {"Manifest", "sc:Manifest"}:
+        return "manifest"
+    return None
+
+
+def _extract_member_label(
+    member: dict[str, Any],
+    *,
+    version: Literal[2, 3],
+    fallback: str,
+) -> str:
+    """Extract member label from version-specific shapes."""
+    if version == 3:
+        label = _extract_v3_label(member.get("label"))
+    else:
+        raw_label = member.get("label")
+        if isinstance(raw_label, list) and raw_label:
+            label = str(raw_label[0])
+        else:
+            label = str(raw_label or "")
+    return label or fallback.rsplit("/", maxsplit=1)[-1]
 
 
 def _v3_first_body(canvas: dict[str, Any]) -> dict[str, Any] | None:

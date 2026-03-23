@@ -15,6 +15,12 @@ pytestmark = pytest.mark.integration
 
 MANIFEST_URL = "https://iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json"
 MANIFEST_PATH = "iiif://iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json"
+BODLEIAN_COLLECTION_PATH = "https://iiif.bodleian.ox.ac.uk/iiif/collection/top"
+BODLEIAN_MANIFEST_PATH = "https://iiif.bodleian.ox.ac.uk/iiif/manifest/b73ca01f-aac8-4916-a7c6-3c8e67939a66.json"
+BODLEIAN_V3_ACCEPT = (
+    "application/ld+json;profile=http://iiif.io/api/presentation/3/context.json"
+)
+BODLEIAN_UA = "iiif-fsspec-integration/0.1 (dev@example.org)"
 
 
 @pytest.fixture(scope="module")
@@ -151,3 +157,48 @@ def test_find_walk_glob_expand_and_du(
 
     canvas_size = live_fs.size(first_canvas_path)
     assert canvas_size is None or isinstance(canvas_size, int)
+
+
+def test_bodleian_collection_hierarchical_listing() -> None:
+    fs = IIIFFileSystem(timeout=30.0, skip_instance_cache=True, user_agent=BODLEIAN_UA)
+    try:
+        top_entries = fs.ls(BODLEIAN_COLLECTION_PATH, detail=True)
+    except Exception as exc:  # pragma: no cover - network-dependent path
+        pytest.skip(f"Bodleian collection endpoint unavailable: {exc}")
+
+    if not top_entries:
+        pytest.skip("Bodleian top collection returned no entries")
+
+    first_child = str(top_entries[0]["name"])
+    child_entries = fs.ls(first_child, detail=True)
+    assert isinstance(child_entries, list)
+    assert len(child_entries) > 0
+
+
+def test_bodleian_manifest_content_negotiation_v2_and_v3() -> None:
+    fs_v2 = IIIFFileSystem(timeout=30.0, skip_instance_cache=True, user_agent=BODLEIAN_UA)
+    try:
+        fs_v2.ls(BODLEIAN_MANIFEST_PATH, detail=True)
+    except Exception as exc:  # pragma: no cover - network-dependent path
+        pytest.skip(f"Bodleian manifest endpoint unavailable: {exc}")
+
+    manifest_v2 = fs_v2._manifest_cache.get(BODLEIAN_MANIFEST_PATH)
+    if manifest_v2 is None:
+        pytest.skip("Bodleian v2 manifest did not populate manifest cache")
+    assert manifest_v2.version == 2
+
+    fs_v3 = IIIFFileSystem(
+        timeout=30.0,
+        skip_instance_cache=True,
+        user_agent=BODLEIAN_UA,
+        headers={"Accept": BODLEIAN_V3_ACCEPT},
+    )
+    try:
+        fs_v3.ls(BODLEIAN_MANIFEST_PATH, detail=True)
+    except Exception as exc:  # pragma: no cover - network-dependent path
+        pytest.skip(f"Bodleian v3-negotiated manifest unavailable: {exc}")
+
+    manifest_v3 = fs_v3._manifest_cache.get(BODLEIAN_MANIFEST_PATH)
+    if manifest_v3 is None:
+        pytest.skip("Bodleian v3 manifest did not populate manifest cache")
+    assert manifest_v3.version == 3

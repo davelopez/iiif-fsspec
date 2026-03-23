@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Literal, Protocol
+from typing import Any, Literal, Protocol, TypeAlias
 
 
 @dataclass(slots=True)
@@ -27,6 +27,30 @@ class ManifestInfo:
     label: str
     canvases: list[CanvasInfo]
     version: Literal[2, 3]
+    kind: Literal["manifest"] = "manifest"
+
+
+@dataclass(slots=True)
+class CollectionMemberInfo:
+    """Reference to a collection member resource."""
+
+    id: str
+    label: str
+    kind: Literal["collection", "manifest"]
+
+
+@dataclass(slots=True)
+class CollectionInfo:
+    """Parsed IIIF collection metadata."""
+
+    id: str
+    label: str
+    members: list[CollectionMemberInfo]
+    version: Literal[2, 3]
+    kind: Literal["collection"] = "collection"
+
+
+ResourceInfo: TypeAlias = ManifestInfo | CollectionInfo
 
 
 class ManifestParser(Protocol):
