@@ -129,6 +129,10 @@ def print_help(colors: bool) -> None:
     print("  quit                    Exit")
 
 
+def print_path_line(path: str, *, colors: bool) -> None:
+    print(f"      {paint(path, Colors.DIM, enabled=colors)}")
+
+
 def list_entries(
     entries: list[IIIFEntryInfo],
     *,
@@ -140,32 +144,38 @@ def list_entries(
         print(paint("(empty)", Colors.DIM, enabled=colors))
         return
 
-    for idx, entry in enumerate(entries[:max_rows], start=1):
+    displayed = entries[:max_rows]
+    labels: list[str] = []
+    for entry in displayed:
+        label = str(entry.get("iiif_label", "")).strip()
+        path = str(entry.get("name", ""))
+        if not label:
+            label = path.rsplit("/", maxsplit=1)[-1]
+        labels.append(label)
+
+    label_width = max(len("LABEL"), *(len(label) for label in labels))
+    header = f"{'#':<4} {'KIND':<5} {'LABEL':<{label_width}} {'SIZE':>9}"
+    print(paint(header, Colors.BOLD, enabled=colors))
+    print(paint("-" * len(header), Colors.DIM, enabled=colors))
+
+    for idx, entry in enumerate(displayed, start=1):
         entry_type = str(entry.get("type", "?"))
         marker = "DIR" if entry_type == "directory" else "IMG"
         marker_color = Colors.BLUE if entry_type == "directory" else Colors.GREEN
+        marker_text = paint(marker, marker_color, enabled=colors)
         label = str(entry.get("iiif_label", "")).strip()
         path = str(entry.get("name", ""))
         if not label:
             label = path.rsplit("/", maxsplit=1)[-1]
 
-        prefix = f"{idx:03d}. {paint(marker, marker_color, enabled=colors)} {label}"
+        size_value = "-"
         if entry_type == "file":
             size = int(entry.get("size", 0) or 0)
-            human = human_size(size)
-            print(f"{prefix} | size={paint(human, Colors.LIGHT_BLUE, enabled=colors)}")
-        else:
-            print(prefix)
+            size_value = human_size(size)
 
-        print(f"      {paint(path, Colors.DIM, enabled=colors)}")
-
+        print(f"{idx:<4} {marker_text:<5} {label:<{label_width}} {size_value:>9}")
         if verbose:
-            resource_type = str(entry.get("iiif_resource_type", "")).strip()
-            if resource_type:
-                print(f"      resource={resource_type}")
-            image_url = str(entry.get("iiif_image_url", "")).strip()
-            if image_url:
-                print(f"      image={image_url}")
+            print_path_line(path, colors=colors)
 
     if len(entries) > max_rows:
         extra = len(entries) - max_rows
@@ -199,6 +209,38 @@ def find_entries(
             entries.append(entry)
 
     return sorted(entries, key=lambda item: str(item.get("name", "")))
+
+
+def infer_current_label(
+    current_path: str,
+    entries: list[IIIFEntryInfo],
+    info: IIIFEntryInfo,
+) -> str:
+    label = str(info.get("iiif_label", "")).strip()
+    if label:
+        return label
+
+    prefixes: set[str] = set()
+    for entry in entries:
+        child_label = str(entry.get("iiif_label", "")).strip()
+        if not child_label:
+            continue
+        if ":" in child_label:
+            prefixes.add(child_label.split(":", maxsplit=1)[0].strip())
+
+    if len(prefixes) == 1:
+        return next(iter(prefixes))
+
+    tail = current_path.rsplit("/", maxsplit=1)[-1]
+    return tail or current_path
+
+
+def infer_current_identifier(current_path: str, info: IIIFEntryInfo) -> str:
+    for key in ("iiif_id", "id", "uri", "name"):
+        value = str(info.get(key, "")).strip()
+        if value:
+            return value
+    return current_path
 
 
 def main() -> None:
@@ -240,8 +282,21 @@ def main() -> None:
                 return
 
             print()
-            print(paint(f"Current: {current_path}", Colors.CYAN, enabled=colors))
-            list_entries(entries, max_rows=max_rows, colors=colors, verbose=verbose)
+            current_id = current_path
+            try:
+                current_info = cast(IIIFEntryInfo, fs.info(current_path))
+                current_label = infer_current_label(current_path, entries, current_info)
+                current_id = infer_current_identifier(current_path, current_info)
+            except Exception:
+                current_label = current_path.rsplit("/", maxsplit=1)[-1] or current_path
+            print(paint(f"Current: {current_label}", Colors.CYAN, enabled=colors))
+            print(paint(f"      ID: {current_id}", Colors.DIM, enabled=colors))
+            list_entries(
+                entries,
+                max_rows=max_rows,
+                colors=colors,
+                verbose=verbose,
+            )
             needs_listing = False
 
         try:
@@ -329,7 +384,14 @@ def main() -> None:
                     enabled=colors,
                 )
             )
-            list_entries(matched, max_rows=max_rows, colors=colors, verbose=verbose)
+            # Keep numeric index navigation aligned with the most recently displayed result set.
+            entries = matched
+            list_entries(
+                matched,
+                max_rows=max_rows,
+                colors=colors,
+                verbose=verbose,
+            )
             continue
 
         if command == "cd":
