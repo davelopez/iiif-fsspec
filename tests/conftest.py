@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 from collections.abc import AsyncGenerator
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 from pytest_httpx import HTTPXMock
@@ -12,26 +13,28 @@ from pytest_httpx import HTTPXMock
 from iiif_fsspec.client import AsyncIIIFClient
 from iiif_fsspec.filesystem import IIIFFileSystem
 
+JSONDict = dict[str, Any]
+
 
 @pytest.fixture
-def sample_manifest_v3() -> dict:
+def sample_manifest_v3() -> JSONDict:
     """Sample IIIF Presentation API v3 manifest."""
     fixture_path = Path(__file__).parent / "data" / "manifest_v3.json"
-    return json.loads(fixture_path.read_text(encoding="utf-8"))
+    return cast(JSONDict, json.loads(fixture_path.read_text(encoding="utf-8")))
 
 
 @pytest.fixture
-def sample_manifest_v2() -> dict:
+def sample_manifest_v2() -> JSONDict:
     """Sample IIIF Presentation API v2 manifest."""
     fixture_path = Path(__file__).parent / "data" / "manifest_v2.json"
-    return json.loads(fixture_path.read_text(encoding="utf-8"))
+    return cast(JSONDict, json.loads(fixture_path.read_text(encoding="utf-8")))
 
 
 @pytest.fixture
-def sample_collection_v2() -> dict:
+def sample_collection_v2() -> JSONDict:
     """Sample IIIF Presentation API v2 collection."""
     fixture_path = Path(__file__).parent / "data" / "collection_v2.json"
-    return json.loads(fixture_path.read_text(encoding="utf-8"))
+    return cast(JSONDict, json.loads(fixture_path.read_text(encoding="utf-8")))
 
 
 @pytest.fixture

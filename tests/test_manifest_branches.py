@@ -40,7 +40,11 @@ def test_extract_v3_label_shapes() -> None:
 
 
 def test_extract_service_id_nested_shapes() -> None:
-    service = [{"id": "https://example.org/svc"}, "ignored", {"@id": "https://example.org/alt"}]
+    service: list[object] = [
+        {"id": "https://example.org/svc"},
+        "ignored",
+        {"@id": "https://example.org/alt"},
+    ]
     assert _extract_service_id(service) == "https://example.org/svc"
     assert _extract_service_id({"@id": "https://example.org/v2"}) == "https://example.org/v2"
     assert _extract_service_id(None) is None

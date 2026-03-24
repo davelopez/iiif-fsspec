@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from typing import Any
+
 import pytest
 from pytest_httpx import HTTPXMock
 
@@ -14,6 +16,7 @@ MANIFEST_PATH = "iiif://example.org/iiif/manifest.json"
 MANIFEST_URL = "https://example.org/iiif/manifest.json"
 IMAGE_URL_1 = "https://images.example.org/iiif/2/abc123/full/max/0/default.jpg"
 V3_ACCEPT = "application/ld+json;profile=http://iiif.io/api/presentation/3/context.json"
+JSONDict = dict[str, Any]
 
 
 def _mock_image_size(httpx_mock: HTTPXMock, size: int = 6) -> None:
@@ -24,14 +27,14 @@ def _mock_image_size(httpx_mock: HTTPXMock, size: int = 6) -> None:
     )
 
 
-def _prime_manifest_cache(iiif_fs: IIIFFileSystem, sample_manifest_v3: dict) -> None:
+def _prime_manifest_cache(iiif_fs: IIIFFileSystem, sample_manifest_v3: JSONDict) -> None:
     iiif_fs._manifest_cache[MANIFEST_URL] = parse_manifest(sample_manifest_v3)
 
 
 def test_ls_manifest(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     httpx_mock.add_response(method="GET", url=MANIFEST_URL, json=sample_manifest_v3)
 
@@ -45,7 +48,7 @@ def test_ls_manifest(
 def test_info_manifest(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     del httpx_mock, sample_manifest_v3
 
@@ -58,7 +61,7 @@ def test_info_manifest(
 def test_info_canvas(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _mock_image_size(httpx_mock)
     _prime_manifest_cache(iiif_fs, sample_manifest_v3)
@@ -73,7 +76,7 @@ def test_info_canvas(
 def test_cat_file_full(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _prime_manifest_cache(iiif_fs, sample_manifest_v3)
     httpx_mock.add_response(method="GET", url=IMAGE_URL_1, content=b"abcdef")
@@ -86,7 +89,7 @@ def test_cat_file_full(
 def test_cat_file_range(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _prime_manifest_cache(iiif_fs, sample_manifest_v3)
     httpx_mock.add_response(
@@ -104,7 +107,7 @@ def test_cat_file_range(
 def test_open_readonly(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _mock_image_size(httpx_mock, size=3)
     _prime_manifest_cache(iiif_fs, sample_manifest_v3)
@@ -123,7 +126,7 @@ def test_open_write_raises(iiif_fs: IIIFFileSystem) -> None:
 def test_manifest_caching(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     del iiif_fs
     fs = IIIFFileSystem(skip_instance_cache=True)
@@ -143,7 +146,7 @@ def test_invalid_path_raises(iiif_fs: IIIFFileSystem) -> None:
 
 def test_ls_manifest_uses_accept_header(
     httpx_mock: HTTPXMock,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     fs = IIIFFileSystem(
         skip_instance_cache=True,
@@ -163,7 +166,7 @@ def test_ls_manifest_uses_accept_header(
 
 def test_ls_manifest_uses_user_agent(
     httpx_mock: HTTPXMock,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     user_agent = "iiif-fsspec-tests/1.0 (dev@example.org)"
     fs = IIIFFileSystem(skip_instance_cache=True, user_agent=user_agent)
@@ -182,7 +185,7 @@ def test_ls_manifest_uses_user_agent(
 def test_ls_collection_returns_directory_entries(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_collection_v2: dict,
+    sample_collection_v2: JSONDict,
 ) -> None:
     collection_url = "https://example.org/iiif/collection/top"
     collection_path = "iiif://example.org/iiif/collection/top"
@@ -194,11 +197,16 @@ def test_ls_collection_returns_directory_entries(
     assert all(entry["type"] == "directory" for entry in entries)
     assert entries[0]["name"].startswith(f"{collection_path}/")
     assert entries[0]["name"].endswith(".json")
+    assert [entry["iiif_label"] for entry in entries] == ["Books", "Book 1"]
+    assert [entry["iiif_id"] for entry in entries] == [
+        "https://example.org/iiif/collection/books",
+        "https://example.org/iiif/manifest/book-1.json",
+    ]
 
 
 def test_collection_listing_uses_resource_cache(
     httpx_mock: HTTPXMock,
-    sample_collection_v2: dict,
+    sample_collection_v2: JSONDict,
 ) -> None:
     collection_url = "https://example.org/iiif/collection/top"
     collection_path = "iiif://example.org/iiif/collection/top"
@@ -214,11 +222,11 @@ def test_collection_listing_uses_resource_cache(
     assert len(collection_requests) == 1
 
 
-def test_ls_child_manifest_from_collection_alias_path(
+def test_ls_child_manifest_from_collection_member_path(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_collection_v2: dict,
-    sample_manifest_v3: dict,
+    sample_collection_v2: JSONDict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     collection_url = "https://example.org/iiif/collection/top"
     collection_path = "iiif://example.org/iiif/collection/top"
@@ -233,42 +241,100 @@ def test_ls_child_manifest_from_collection_alias_path(
 
     assert len(manifest_entries) == 1
     child_manifest_path = str(manifest_entries[0]["name"])
+    assert manifest_entries[0]["iiif_label"] == "Book 1"
+    assert manifest_entries[0]["iiif_id"] == child_manifest_url
     child_entries = iiif_fs.ls(child_manifest_path, detail=True)
 
     assert len(child_entries) == 2
     assert all(entry["type"] == "file" for entry in child_entries)
 
 
-def test_collection_alias_cache_is_bounded(httpx_mock: HTTPXMock) -> None:
+def test_collection_child_path_is_stateless_across_fresh_instances(
+    httpx_mock: HTTPXMock,
+    sample_collection_v2: JSONDict,
+    sample_manifest_v3: JSONDict,
+) -> None:
     collection_url = "https://example.org/iiif/collection/top"
     collection_path = "iiif://example.org/iiif/collection/top"
-    resource_alias_limit = 3
-    fs = IIIFFileSystem(
-        skip_instance_cache=True,
-        resource_alias_limit=resource_alias_limit,
-    )
+    child_manifest_url = "https://example.org/iiif/manifest/book-1.json"
 
-    manifest_urls = [
-        f"https://example.org/iiif/manifest/book-{index}.json"
-        for index in range(5)
+    fs_a = IIIFFileSystem(skip_instance_cache=True)
+    fs_b = IIIFFileSystem(skip_instance_cache=True)
+
+    httpx_mock.add_response(method="GET", url=collection_url, json=sample_collection_v2)
+    httpx_mock.add_response(method="GET", url=child_manifest_url, json=sample_manifest_v3)
+
+    collection_entries = fs_a.ls(collection_path, detail=True)
+    child_manifest_paths = [
+        str(entry["name"])
+        for entry in collection_entries
+        if entry["iiif_resource_type"] == "manifest"
     ]
-    collection_payload = {
+
+    assert len(child_manifest_paths) == 1
+
+    child_entries = fs_b.ls(child_manifest_paths[0], detail=True)
+
+    assert len(child_entries) == 2
+    assert all(entry["type"] == "file" for entry in child_entries)
+
+
+def test_nested_collection_paths_are_stateless_across_fresh_instances(
+    httpx_mock: HTTPXMock,
+    sample_manifest_v3: JSONDict,
+) -> None:
+    top_collection_url = "https://example.org/iiif/collection/top"
+    top_collection_path = "iiif://example.org/iiif/collection/top"
+    nested_collection_url = "https://example.org/iiif/collection/books"
+    child_manifest_url = "https://example.org/iiif/manifest/book-1.json"
+
+    top_collection_payload = {
         "@context": "http://iiif.io/api/presentation/2/context.json",
-        "@id": collection_url,
+        "@id": top_collection_url,
         "@type": "sc:Collection",
         "label": "Top Collection",
-        "manifests": [
+        "collections": [
             {
-                "@id": manifest_url,
-                "@type": "sc:Manifest",
-                "label": f"Book {index}",
+                "@id": nested_collection_url,
+                "@type": "sc:Collection",
+                "label": "Books",
             }
-            for index, manifest_url in enumerate(manifest_urls)
         ],
     }
-    httpx_mock.add_response(method="GET", url=collection_url, json=collection_payload)
+    nested_collection_payload = {
+        "@context": "http://iiif.io/api/presentation/2/context.json",
+        "@id": nested_collection_url,
+        "@type": "sc:Collection",
+        "label": "Books",
+        "manifests": [
+            {
+                "@id": child_manifest_url,
+                "@type": "sc:Manifest",
+                "label": "Book 1",
+            }
+        ],
+    }
 
-    fs.ls(collection_path, detail=True)
+    fs_a = IIIFFileSystem(skip_instance_cache=True)
+    fs_b = IIIFFileSystem(skip_instance_cache=True)
+    fs_c = IIIFFileSystem(skip_instance_cache=True)
 
-    assert len(fs._resource_aliases) == resource_alias_limit
-    assert list(fs._resource_aliases.values()) == manifest_urls[-resource_alias_limit:]
+    httpx_mock.add_response(method="GET", url=top_collection_url, json=top_collection_payload)
+    httpx_mock.add_response(method="GET", url=nested_collection_url, json=nested_collection_payload)
+    httpx_mock.add_response(method="GET", url=child_manifest_url, json=sample_manifest_v3)
+
+    top_entries = fs_a.ls(top_collection_path, detail=True)
+    nested_paths = [
+        str(entry["name"]) for entry in top_entries if entry["iiif_resource_type"] == "collection"
+    ]
+    assert len(nested_paths) == 1
+
+    nested_entries = fs_b.ls(nested_paths[0], detail=True)
+    manifest_paths = [
+        str(entry["name"]) for entry in nested_entries if entry["iiif_resource_type"] == "manifest"
+    ]
+    assert len(manifest_paths) == 1
+
+    canvas_entries = fs_c.ls(manifest_paths[0], detail=True)
+    assert len(canvas_entries) == 2
+    assert all(entry["type"] == "file" for entry in canvas_entries)

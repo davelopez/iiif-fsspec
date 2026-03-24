@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import base64
 import re
 import unicodedata
 from urllib.parse import urlsplit, urlunsplit
 
-from iiif_fsspec.types import CanvasInfo
+from iiif_fsspec.types import CanvasInfo, CollectionMemberInfo
 
 _PROTOCOL = "iiif://"
 _CANVAS_EXTENSIONS = {"jpg", "jpeg", "png", "tif", "tiff", "webp"}
@@ -132,3 +133,73 @@ def make_canvas_path(manifest_path: str, canvas: CanvasInfo) -> str:
     stem = sanitize_filename(canvas.label or canvas.id.rsplit("/", maxsplit=1)[-1])
     extension = canvas.format.lstrip(".") or "jpg"
     return f"{base}/{stem}.{extension}"
+
+
+def encode_resource_url_token(resource_url: str) -> str:
+    """Encode a resource URL to a URL-safe token without padding."""
+    payload = resource_url.encode("utf-8")
+    return base64.urlsafe_b64encode(payload).decode("ascii").rstrip("=")
+
+
+def decode_resource_url_token(token: str) -> str | None:
+    """Decode a URL-safe token into its resource URL.
+
+    Returns ``None`` for malformed tokens.
+    """
+    if not token or not re.fullmatch(r"[A-Za-z0-9_-]+", token):
+        return None
+
+    padding = "=" * (-len(token) % 4)
+    try:
+        decoded = base64.urlsafe_b64decode(f"{token}{padding}")
+        return decoded.decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        return None
+
+
+def make_collection_member_path(parent_path: str, member: CollectionMemberInfo) -> str:
+    """Build a label-first stateless child path for collection members."""
+    slug_source = member.label or member.id.rsplit("/", maxsplit=1)[-1]
+    slug = sanitize_filename(slug_source)
+    token = encode_resource_url_token(member.id)
+    filename = f"{member.kind}-{slug}--{token}.json"
+    return f"{parent_path.rstrip('/')}/{filename}"
+
+
+def is_collection_member_path(path: str) -> bool:
+    """Return whether a path matches the stateless collection member shape."""
+    url = to_iiif_url(path)
+    split = urlsplit(url)
+    basename = split.path.rsplit("/", maxsplit=1)[-1]
+    if not basename.endswith(".json"):
+        return False
+
+    stem = basename[:-5]
+    if "--" not in stem:
+        return False
+
+    prefix, _token = stem.rsplit("--", maxsplit=1)
+    return prefix.startswith("manifest-") or prefix.startswith("collection-")
+
+
+def decode_collection_member_resource_url(path: str) -> str | None:
+    """Extract and decode collection member URL from a stateless child path."""
+    url = to_iiif_url(path)
+    split = urlsplit(url)
+    basename = split.path.rsplit("/", maxsplit=1)[-1]
+
+    if not basename.endswith(".json"):
+        return None
+
+    stem = basename[:-5]
+    if "--" not in stem:
+        return None
+
+    prefix, token = stem.rsplit("--", maxsplit=1)
+    if not token or not prefix:
+        return None
+
+    if not (prefix.startswith("manifest-") or prefix.startswith("collection-")):
+        return None
+
+    return decode_resource_url_token(token)

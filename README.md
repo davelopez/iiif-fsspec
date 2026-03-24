@@ -32,8 +32,15 @@ Current scope:
 
 - Read-only operations
 - Manifest listing to canvas file entries
+- Collection listing to stateless child paths
 - Full image reads and range reads
 - In-memory manifest caching
+
+When a collection is listed, child entries keep a resolvable stateless path in `name`, preserve
+the human-friendly label in `iiif_label`, and keep the IIIF identifier in `iiif_id`. The path
+remains self-contained so a value returned from one filesystem instance can be opened or listed
+from a fresh instance without prior cache warm-up. Malformed stateless collection paths raise
+`InvalidPathError`.
 
 ## Installation
 
@@ -178,7 +185,7 @@ Run checks:
 ```bash
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
-uv run mypy
+uv run mypy src/ tests/
 uv run pytest --cov=iiif_fsspec --cov-report=term-missing
 
 # Run live-network integration tests (opt-in, requires network access)

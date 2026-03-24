@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 import httpx
 import pytest
@@ -16,6 +17,8 @@ MANIFEST_PATH = "iiif://example.org/iiif/manifest.json"
 MANIFEST_URL = "https://example.org/iiif/manifest.json"
 IMAGE_URL_1 = "https://images.example.org/iiif/2/abc123/full/max/0/default.jpg"
 IMAGE_BYTES = b"abcdefghijklmnopqrstuvwxyz"
+
+JSONDict = dict[str, Any]
 
 
 def _image_callback(request: httpx.Request) -> httpx.Response:
@@ -33,7 +36,7 @@ def _image_callback(request: httpx.Request) -> httpx.Response:
     return httpx.Response(status_code=206, content=IMAGE_BYTES[start : end + 1])
 
 
-def _register_manifest_and_image(httpx_mock: HTTPXMock, sample_manifest_v3: dict) -> None:
+def _register_manifest_and_image(httpx_mock: HTTPXMock, sample_manifest_v3: JSONDict) -> None:
     httpx_mock.add_response(method="GET", url=MANIFEST_URL, json=sample_manifest_v3)
     httpx_mock.add_response(
         method="HEAD",
@@ -46,7 +49,7 @@ def _register_manifest_and_image(httpx_mock: HTTPXMock, sample_manifest_v3: dict
 def test_read_full(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _register_manifest_and_image(httpx_mock, sample_manifest_v3)
 
@@ -57,7 +60,7 @@ def test_read_full(
 def test_read_chunks(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _register_manifest_and_image(httpx_mock, sample_manifest_v3)
 
@@ -69,7 +72,7 @@ def test_read_chunks(
 def test_read_range(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _register_manifest_and_image(httpx_mock, sample_manifest_v3)
 
@@ -81,7 +84,7 @@ def test_read_range(
 def test_seek_and_tell(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _register_manifest_and_image(httpx_mock, sample_manifest_v3)
 
@@ -98,7 +101,7 @@ def test_write_raises(iiif_fs: IIIFFileSystem) -> None:
 def test_context_manager(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _register_manifest_and_image(httpx_mock, sample_manifest_v3)
 

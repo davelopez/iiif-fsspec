@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-import hashlib
 import os
-from collections import OrderedDict
 from typing import cast
 
 from fsspec.asyn import AsyncFileSystem
@@ -14,7 +12,14 @@ from iiif_fsspec.client import AsyncIIIFClient
 from iiif_fsspec.exceptions import InvalidPathError
 from iiif_fsspec.iiif_file import IIIFFile
 from iiif_fsspec.manifest import parse_resource
-from iiif_fsspec.path import make_canvas_path, parse_path, sanitize_filename, to_iiif_url
+from iiif_fsspec.path import (
+    decode_collection_member_resource_url,
+    is_collection_member_path,
+    make_canvas_path,
+    make_collection_member_path,
+    parse_path,
+    sanitize_filename,
+)
 from iiif_fsspec.types import (
     CanvasInfo,
     CollectionInfo,
@@ -41,7 +46,6 @@ class IIIFFileSystem(AsyncFileSystem):
         timeout: float = 30.0,
         headers: dict[str, str] | None = None,
         user_agent: str | None = None,
-        resource_alias_limit: int = 2048,
         **storage_options: object,
     ) -> None:
         """Initialize the IIIF filesystem."""
@@ -52,8 +56,6 @@ class IIIFFileSystem(AsyncFileSystem):
         self._client = AsyncIIIFClient(timeout=timeout, headers=resolved_headers)
         self._manifest_cache: dict[str, ManifestInfo] = {}
         self._resource_cache: dict[str, ResourceInfo] = {}
-        self._resource_aliases: OrderedDict[str, str] = OrderedDict()
-        self._resource_alias_limit = max(int(resource_alias_limit), 1)
 
     @classmethod
     def _strip_protocol(cls, path: str) -> str:
@@ -109,8 +111,7 @@ class IIIFFileSystem(AsyncFileSystem):
             collection_path = _ensure_protocol_path(path)
             entries: list[IIIFEntryInfo] = []
             for member in resource.members:
-                member_path = _make_member_path(collection_path, member)
-                self._remember_resource_alias(to_iiif_url(member_path), member.id)
+                member_path = make_collection_member_path(collection_path, member)
                 entries.append(_collection_member_entry(member_path, member.id, member))
         else:
             manifest_path = _ensure_protocol_path(path)
@@ -203,7 +204,11 @@ class IIIFFileSystem(AsyncFileSystem):
 
     async def _get_resource(self, resource_url: str) -> ResourceInfo:
         """Fetch and cache parsed IIIF resources (manifest or collection)."""
-        resolved_url = self._resource_aliases.get(resource_url, resource_url)
+        decoded_url = decode_collection_member_resource_url(resource_url)
+        if decoded_url is None and is_collection_member_path(resource_url):
+            raise InvalidPathError(f"Invalid stateless collection member path: {resource_url}")
+
+        resolved_url = decoded_url or resource_url
 
         cached = self._resource_cache.get(resolved_url)
         if cached is not None:
@@ -223,14 +228,6 @@ class IIIFFileSystem(AsyncFileSystem):
             self._manifest_cache[resolved_url] = resource
             self._manifest_cache[resource_url] = resource
         return resource
-
-    def _remember_resource_alias(self, alias_url: str, resolved_url: str) -> None:
-        """Store bounded alias mappings used for collection child path resolution."""
-        self._resource_aliases.pop(alias_url, None)
-        self._resource_aliases[alias_url] = resolved_url
-
-        if len(self._resource_aliases) > self._resource_alias_limit:
-            self._resource_aliases.popitem(last=False)
 
 
 def _ensure_protocol_path(path: str) -> str:
@@ -303,12 +300,3 @@ def _collection_member_entry(
     entry["iiif_resource_type"] = member.kind
 
     return IIIFEntryInfo(entry)
-
-
-def _make_member_path(parent_path: str, member: CollectionMemberInfo) -> str:
-    """Create deterministic hierarchical child path for a collection member."""
-    slug_source = member.label or member.id.rsplit("/", maxsplit=1)[-1]
-    slug = sanitize_filename(slug_source)
-    digest = hashlib.sha1(member.id.encode("utf-8")).hexdigest()[:8]
-    filename = f"{member.kind}-{slug}-{digest}.json"
-    return f"{parent_path.rstrip('/')}/{filename}"

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import cast
+from typing import Any, cast
 
 from pytest_httpx import HTTPXMock
 
@@ -14,15 +14,16 @@ from iiif_fsspec.manifest import parse_manifest
 # that callers can use the paths transparently.
 MANIFEST_URL = "https://example.org/iiif/manifest.json"
 IMAGE_URL_1 = "https://images.example.org/iiif/2/abc123/full/max/0/default.jpg"
+JSONDict = dict[str, Any]
 
 
-def _prime(iiif_fs: IIIFFileSystem, sample_manifest_v3: dict) -> None:
+def _prime(iiif_fs: IIIFFileSystem, sample_manifest_v3: JSONDict) -> None:
     iiif_fs._manifest_cache[MANIFEST_URL] = parse_manifest(sample_manifest_v3)
 
 
 def test_ls_names_preserve_https_scheme(
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _prime(iiif_fs, sample_manifest_v3)
 
@@ -34,7 +35,7 @@ def test_ls_names_preserve_https_scheme(
 
 def test_ls_detail_names_preserve_https_scheme(
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _prime(iiif_fs, sample_manifest_v3)
 
@@ -45,7 +46,7 @@ def test_ls_detail_names_preserve_https_scheme(
 
 def test_info_manifest_preserves_https_scheme(
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _prime(iiif_fs, sample_manifest_v3)
 
@@ -58,7 +59,7 @@ def test_info_manifest_preserves_https_scheme(
 def test_info_canvas_preserves_https_scheme(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _prime(iiif_fs, sample_manifest_v3)
     httpx_mock.add_response(method="HEAD", url=IMAGE_URL_1, headers={"Content-Length": "6"})
@@ -73,7 +74,7 @@ def test_info_canvas_preserves_https_scheme(
 def test_cat_file_with_https_path(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _prime(iiif_fs, sample_manifest_v3)
     httpx_mock.add_response(method="GET", url=IMAGE_URL_1, content=b"hello")
@@ -85,7 +86,7 @@ def test_cat_file_with_https_path(
 
 def test_glob_with_https_path(
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _prime(iiif_fs, sample_manifest_v3)
 
@@ -98,7 +99,7 @@ def test_glob_with_https_path(
 
 def test_glob_no_match_returns_empty(
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _prime(iiif_fs, sample_manifest_v3)
 
@@ -109,7 +110,7 @@ def test_glob_no_match_returns_empty(
 
 def test_find_with_https_path(
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     _prime(iiif_fs, sample_manifest_v3)
 
@@ -122,7 +123,7 @@ def test_find_with_https_path(
 def test_manifest_fetch_uses_https_url(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
-    sample_manifest_v3: dict,
+    sample_manifest_v3: JSONDict,
 ) -> None:
     """Passing an https:// path fetches the manifest at that URL, not iiif://."""
     httpx_mock.add_response(method="GET", url=MANIFEST_URL, json=sample_manifest_v3)

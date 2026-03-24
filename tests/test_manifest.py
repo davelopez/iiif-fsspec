@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any, cast
 
 import pytest
 
@@ -16,10 +17,12 @@ from iiif_fsspec.manifest import (
 )
 from iiif_fsspec.types import CollectionInfo
 
+JSONDict = dict[str, Any]
 
-def _load_fixture(name: str) -> dict:
+
+def _load_fixture(name: str) -> JSONDict:
     fixture_path = Path(__file__).parent / "data" / name
-    return json.loads(fixture_path.read_text(encoding="utf-8"))
+    return cast(JSONDict, json.loads(fixture_path.read_text(encoding="utf-8")))
 
 
 def test_parse_valid_v2_manifest() -> None:

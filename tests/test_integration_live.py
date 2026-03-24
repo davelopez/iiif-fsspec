@@ -16,10 +16,10 @@ pytestmark = pytest.mark.integration
 MANIFEST_URL = "https://iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json"
 MANIFEST_PATH = "iiif://iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json"
 BODLEIAN_COLLECTION_PATH = "https://iiif.bodleian.ox.ac.uk/iiif/collection/top"
-BODLEIAN_MANIFEST_PATH = "https://iiif.bodleian.ox.ac.uk/iiif/manifest/b73ca01f-aac8-4916-a7c6-3c8e67939a66.json"
-BODLEIAN_V3_ACCEPT = (
-    "application/ld+json;profile=http://iiif.io/api/presentation/3/context.json"
+BODLEIAN_MANIFEST_PATH = (
+    "https://iiif.bodleian.ox.ac.uk/iiif/manifest/b73ca01f-aac8-4916-a7c6-3c8e67939a66.json"
 )
+BODLEIAN_V3_ACCEPT = "application/ld+json;profile=http://iiif.io/api/presentation/3/context.json"
 BODLEIAN_UA = "iiif-fsspec-integration/0.1 (dev@example.org)"
 
 
