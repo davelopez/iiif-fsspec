@@ -88,6 +88,11 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Disable ANSI colors",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Show additional metadata in listings and command output",
+    )
     return parser.parse_args()
 
 
@@ -113,10 +118,12 @@ def resolve_target(token: str, entries: list[IIIFEntryInfo]) -> str:
 def print_help(colors: bool) -> None:
     print(paint("Commands:", Colors.BOLD, enabled=colors))
     print("  ls [N]                  List current directory (optional limit)")
+    print("  refresh                 Re-fetch and print current listing")
     print("  find <text>             Search current folder using filesystem find")
     print("  cd <index|path|..>      Enter directory by index/path or go up")
     print("  info <index|path>       Show detailed metadata")
     print("  get <index|path> [out]  Download image file")
+    print("  verbose [on|off|toggle] Show or update verbose mode")
     print("  pwd                     Show current path")
     print("  help                    Show this help")
     print("  quit                    Exit")
@@ -127,6 +134,7 @@ def list_entries(
     *,
     max_rows: int,
     colors: bool,
+    verbose: bool,
 ) -> None:
     if not entries:
         print(paint("(empty)", Colors.DIM, enabled=colors))
@@ -137,17 +145,27 @@ def list_entries(
         marker = "DIR" if entry_type == "directory" else "IMG"
         marker_color = Colors.BLUE if entry_type == "directory" else Colors.GREEN
         label = str(entry.get("iiif_label", "")).strip()
+        path = str(entry.get("name", ""))
         if not label:
-            label = str(entry.get("name", "")).rsplit("/", maxsplit=1)[-1]
+            label = path.rsplit("/", maxsplit=1)[-1]
+
+        prefix = f"{idx:03d}. {paint(marker, marker_color, enabled=colors)} {label}"
         if entry_type == "file":
             size = int(entry.get("size", 0) or 0)
             human = human_size(size)
-            print(
-                f"{idx:03d}. {paint(marker, marker_color, enabled=colors)} {label}"
-                f" | size={paint(human, Colors.LIGHT_BLUE, enabled=colors)}"
-            )
+            print(f"{prefix} | size={paint(human, Colors.LIGHT_BLUE, enabled=colors)}")
         else:
-            print(f"{idx:03d}. {paint(marker, marker_color, enabled=colors)} {label}")
+            print(prefix)
+
+        print(f"      {paint(path, Colors.DIM, enabled=colors)}")
+
+        if verbose:
+            resource_type = str(entry.get("iiif_resource_type", "")).strip()
+            if resource_type:
+                print(f"      resource={resource_type}")
+            image_url = str(entry.get("iiif_image_url", "")).strip()
+            if image_url:
+                print(f"      image={image_url}")
 
     if len(entries) > max_rows:
         extra = len(entries) - max_rows
@@ -186,6 +204,7 @@ def find_entries(
 def main() -> None:
     args = parse_args()
     colors = not args.no_color
+    verbose = bool(args.verbose)
     max_rows = max(int(args.limit), 1)
 
     headers: dict[str, str] = {}
@@ -200,23 +219,34 @@ def main() -> None:
     )
 
     current_path = to_iiif_path(args.manifest_url)
+    entries: list[IIIFEntryInfo] = []
+    needs_listing = True
 
     print(paint("IIIF Browser CLI", Colors.BOLD, enabled=colors))
     print(paint("Type 'help' for commands.", Colors.DIM, enabled=colors))
 
     while True:
-        try:
-            entries = cast(list[IIIFEntryInfo], fs.ls(current_path, detail=True))
-        except Exception as exc:
-            print(paint(f"error listing {current_path}: {exc}", Colors.RED, enabled=colors))
-            return
+        if needs_listing:
+            try:
+                entries = cast(list[IIIFEntryInfo], fs.ls(current_path, detail=True))
+            except Exception as exc:
+                print(
+                    paint(
+                        f"error listing {current_path}: {exc}",
+                        Colors.RED,
+                        enabled=colors,
+                    )
+                )
+                return
 
-        print()
-        print(paint(f"Current: {current_path}", Colors.CYAN, enabled=colors))
-        list_entries(entries, max_rows=max_rows, colors=colors)
+            print()
+            print(paint(f"Current: {current_path}", Colors.CYAN, enabled=colors))
+            list_entries(entries, max_rows=max_rows, colors=colors, verbose=verbose)
+            needs_listing = False
 
         try:
-            raw = input(paint("iiif> ", Colors.YELLOW, enabled=colors)).strip()
+            prompt_prefix = "iiif[v]" if verbose else "iiif"
+            raw = input(paint(f"{prompt_prefix}> ", Colors.YELLOW, enabled=colors)).strip()
         except EOFError:
             print()
             break
@@ -243,12 +273,40 @@ def main() -> None:
             print(current_path)
             continue
 
+        if command in {"refresh", "r"}:
+            needs_listing = True
+            continue
+
+        if command == "verbose":
+            if len(parts) == 1:
+                state = "on" if verbose else "off"
+                print(f"verbose: {state}")
+                continue
+            if len(parts) != 2:
+                print(paint("usage: verbose [on|off|toggle]", Colors.RED, enabled=colors))
+                continue
+            action = parts[1].lower()
+            if action == "on":
+                verbose = True
+            elif action == "off":
+                verbose = False
+            elif action in {"toggle", "t"}:
+                verbose = not verbose
+            else:
+                print(paint("usage: verbose [on|off|toggle]", Colors.RED, enabled=colors))
+                continue
+            state = "on" if verbose else "off"
+            print(f"verbose: {state}")
+            needs_listing = True
+            continue
+
         if command == "ls":
             if len(parts) > 1:
                 if not parts[1].isdigit():
                     print(paint("ls expects an integer limit", Colors.RED, enabled=colors))
                     continue
                 max_rows = max(int(parts[1]), 1)
+            needs_listing = True
             continue
 
         if command == "find":
@@ -271,7 +329,7 @@ def main() -> None:
                     enabled=colors,
                 )
             )
-            list_entries(matched, max_rows=max_rows, colors=colors)
+            list_entries(matched, max_rows=max_rows, colors=colors, verbose=verbose)
             continue
 
         if command == "cd":
@@ -281,6 +339,7 @@ def main() -> None:
             token = parts[1]
             if token == "..":
                 current_path = parent_path(current_path)
+                needs_listing = True
                 continue
 
             try:
@@ -294,6 +353,7 @@ def main() -> None:
                 print(paint("target is not a directory", Colors.RED, enabled=colors))
                 continue
             current_path = target_path
+            needs_listing = True
             continue
 
         if command == "info":
@@ -352,6 +412,9 @@ def main() -> None:
                     enabled=colors,
                 )
             )
+            if verbose:
+                size = int(info.get("size", 0) or 0)
+                print(f"bytes: {size} ({human_size(size)})")
             continue
 
         print(paint("unknown command; type 'help'", Colors.RED, enabled=colors))
