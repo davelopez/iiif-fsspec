@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any, cast
+from typing import cast
 
 import pytest
 
@@ -17,7 +17,7 @@ from iiif_fsspec.manifest import (
 )
 from iiif_fsspec.types import CollectionInfo
 
-JSONDict = dict[str, Any]
+from .conftest import JSONDict
 
 
 def _load_fixture(name: str) -> JSONDict:

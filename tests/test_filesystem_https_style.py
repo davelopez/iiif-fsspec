@@ -2,19 +2,20 @@
 
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import cast
 
 from pytest_httpx import HTTPXMock
 
 from iiif_fsspec.filesystem import IIIFFileSystem
 from iiif_fsspec.manifest import parse_manifest
 
+from .conftest import JSONDict
+
 # When users supply a plain https:// URL (as they would copy from a browser or
 # repository documentation), every returned path must echo that same scheme so
 # that callers can use the paths transparently.
 MANIFEST_URL = "https://example.org/iiif/manifest.json"
 IMAGE_URL_1 = "https://images.example.org/iiif/2/abc123/full/max/0/default.jpg"
-JSONDict = dict[str, Any]
 
 
 def _prime(iiif_fs: IIIFFileSystem, sample_manifest_v3: JSONDict) -> None:

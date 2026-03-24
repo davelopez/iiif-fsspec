@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 from pytest_httpx import HTTPXMock
 
@@ -12,11 +10,12 @@ from iiif_fsspec.filesystem import IIIFFileSystem
 from iiif_fsspec.iiif_file import IIIFFile
 from iiif_fsspec.manifest import parse_manifest
 
+from .conftest import JSONDict
+
 MANIFEST_PATH = "iiif://example.org/iiif/manifest.json"
 MANIFEST_URL = "https://example.org/iiif/manifest.json"
 IMAGE_URL_1 = "https://images.example.org/iiif/2/abc123/full/max/0/default.jpg"
 V3_ACCEPT = "application/ld+json;profile=http://iiif.io/api/presentation/3/context.json"
-JSONDict = dict[str, Any]
 
 
 def _mock_image_size(httpx_mock: HTTPXMock, size: int = 6) -> None:

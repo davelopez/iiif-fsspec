@@ -2,17 +2,16 @@
 
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from iiif_fsspec.exceptions import InvalidPathError
 from iiif_fsspec.filesystem import IIIFFileSystem
 from iiif_fsspec.manifest import parse_manifest
 
+from .conftest import JSONDict
+
 MANIFEST_PATH = "iiif://example.org/iiif/manifest.json"
 MANIFEST_URL = "https://example.org/iiif/manifest.json"
-JSONDict = dict[str, Any]
 
 
 def _prime_manifest_cache(iiif_fs: IIIFFileSystem, sample_manifest_v3: JSONDict) -> None:

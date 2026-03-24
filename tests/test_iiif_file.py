@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import re
-from typing import Any
 
 import httpx
 import pytest
@@ -11,14 +10,14 @@ from pytest_httpx import HTTPXMock
 
 from iiif_fsspec.filesystem import IIIFFileSystem
 
+from .conftest import JSONDict
+
 pytestmark = pytest.mark.httpx_mock(assert_all_responses_were_requested=False)
 
 MANIFEST_PATH = "iiif://example.org/iiif/manifest.json"
 MANIFEST_URL = "https://example.org/iiif/manifest.json"
 IMAGE_URL_1 = "https://images.example.org/iiif/2/abc123/full/max/0/default.jpg"
 IMAGE_BYTES = b"abcdefghijklmnopqrstuvwxyz"
-
-JSONDict = dict[str, Any]
 
 
 def _image_callback(request: httpx.Request) -> httpx.Response:
