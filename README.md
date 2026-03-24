@@ -201,6 +201,34 @@ CI test strategy:
 
 Pre-commit hooks are configured in `.pre-commit-config.yaml`.
 
+## Release
+
+This project publishes to TestPyPI and PyPI from tags matching `v*` via
+GitHub Actions trusted publishing (OIDC).
+
+Release steps:
+
+```bash
+# 1) Bump version in both files:
+#    - pyproject.toml
+#    - src/iiif_fsspec/__init__.py
+
+# 2) Run checks
+uv run ruff check src/ tests/
+uv run mypy src/ tests/
+uv run pytest
+
+# 3) Commit and push
+git add pyproject.toml src/iiif_fsspec/__init__.py
+git commit -m "Release vX.Y.Z"
+git push
+
+# 4) Create and push a tag (final or prerelease)
+git tag vX.Y.Z
+git push origin vX.Y.Z
+```
+
+
 ## License
 
 MIT. See `LICENSE`.
