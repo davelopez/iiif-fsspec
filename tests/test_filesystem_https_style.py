@@ -1,4 +1,4 @@
-"""Tests for IIIFFileSystem with raw https:// manifest URLs (dual-style support)."""
+"""Tests for IIIFFileSystem when input paths are raw https:// URLs."""
 
 from __future__ import annotations
 
@@ -8,13 +8,13 @@ from pytest_httpx import HTTPXMock
 
 from iiif_fsspec.filesystem import IIIFFileSystem
 from iiif_fsspec.manifest import parse_manifest
+from iiif_fsspec.path import make_resource_path
 
 from .conftest import JSONDict
 
-# When users supply a plain https:// URL (as they would copy from a browser or
-# repository documentation), every returned path must echo that same scheme so
-# that callers can use the paths transparently.
 MANIFEST_URL = "https://example.org/iiif/manifest.json"
+MANIFEST_PATH = make_resource_path(MANIFEST_URL, kind="manifest")
+OUTPUT_MANIFEST_PATH = MANIFEST_PATH.removeprefix("iiif://")
 IMAGE_URL_1 = "https://images.example.org/iiif/2/abc123/full/max/0/default.jpg"
 
 
@@ -22,7 +22,7 @@ def _prime(iiif_fs: IIIFFileSystem, sample_manifest_v3: JSONDict) -> None:
     iiif_fs._manifest_cache[MANIFEST_URL] = parse_manifest(sample_manifest_v3)
 
 
-def test_ls_names_preserve_https_scheme(
+def test_ls_names_are_canonical_tokenized_paths(
     iiif_fs: IIIFFileSystem,
     sample_manifest_v3: JSONDict,
 ) -> None:
@@ -31,10 +31,10 @@ def test_ls_names_preserve_https_scheme(
     names = iiif_fs.ls(MANIFEST_URL, detail=False)
 
     assert len(names) == 2
-    assert all(n.startswith("https://") for n in names), names
+    assert all(n.startswith(f"{OUTPUT_MANIFEST_PATH}/") for n in names), names
 
 
-def test_ls_detail_names_preserve_https_scheme(
+def test_ls_detail_names_are_canonical_tokenized_paths(
     iiif_fs: IIIFFileSystem,
     sample_manifest_v3: JSONDict,
 ) -> None:
@@ -42,10 +42,10 @@ def test_ls_detail_names_preserve_https_scheme(
 
     entries = iiif_fs.ls(MANIFEST_URL, detail=True)
 
-    assert all(str(e["name"]).startswith("https://") for e in entries), entries
+    assert all(str(e["name"]).startswith(f"{OUTPUT_MANIFEST_PATH}/") for e in entries), entries
 
 
-def test_info_manifest_preserves_https_scheme(
+def test_info_manifest_returns_canonical_tokenized_path(
     iiif_fs: IIIFFileSystem,
     sample_manifest_v3: JSONDict,
 ) -> None:
@@ -54,10 +54,10 @@ def test_info_manifest_preserves_https_scheme(
     info = iiif_fs.info(MANIFEST_URL)
 
     assert info["type"] == "directory"
-    assert str(info["name"]) == MANIFEST_URL
+    assert str(info["name"]) == OUTPUT_MANIFEST_PATH
 
 
-def test_info_canvas_preserves_https_scheme(
+def test_info_canvas_returns_canonical_tokenized_path(
     httpx_mock: HTTPXMock,
     iiif_fs: IIIFFileSystem,
     sample_manifest_v3: JSONDict,
@@ -69,7 +69,7 @@ def test_info_canvas_preserves_https_scheme(
     info = iiif_fs.info(canvas_path)
 
     assert info["type"] == "file"
-    assert str(info["name"]) == canvas_path
+    assert str(info["name"]) == f"{OUTPUT_MANIFEST_PATH}/canvas-one.jpg"
 
 
 def test_cat_file_with_https_path(
@@ -91,11 +91,11 @@ def test_glob_with_https_path(
 ) -> None:
     _prime(iiif_fs, sample_manifest_v3)
 
-    matches = cast(list[str], iiif_fs.glob(f"{MANIFEST_URL}/*"))
+    matches = cast(list[str], iiif_fs.glob(f"{MANIFEST_PATH}/*"))
 
     assert len(matches) == 2
-    assert all(m.startswith("https://") for m in matches), matches
-    assert f"{MANIFEST_URL}/canvas-one.jpg" in matches
+    assert all(m.startswith(f"{OUTPUT_MANIFEST_PATH}/") for m in matches), matches
+    assert f"{OUTPUT_MANIFEST_PATH}/canvas-one.jpg" in matches
 
 
 def test_glob_no_match_returns_empty(
@@ -118,7 +118,7 @@ def test_find_with_https_path(
     found = iiif_fs.find(MANIFEST_URL)
 
     assert len(found) == 2
-    assert all(p.startswith("https://") for p in found), found
+    assert all(p.startswith(f"{OUTPUT_MANIFEST_PATH}/") for p in found), found
 
 
 def test_manifest_fetch_uses_https_url(
@@ -132,4 +132,4 @@ def test_manifest_fetch_uses_https_url(
     names = iiif_fs.ls(MANIFEST_URL, detail=False)
 
     assert len(names) == 2
-    assert names[0].startswith(f"{MANIFEST_URL}/")
+    assert names[0].startswith(f"{OUTPUT_MANIFEST_PATH}/")

@@ -11,6 +11,9 @@ from iiif_fsspec.types import CanvasInfo, CollectionMemberInfo
 
 _PROTOCOL = "iiif://"
 _CANVAS_EXTENSIONS = {"jpg", "jpeg", "png", "tif", "tiff", "webp"}
+_RESOURCE_SEGMENT = re.compile(
+    r"^(?P<prefix>(?:manifest|collection|resource)(?:-[A-Za-z0-9._-]+)?)--(?P<token>[A-Za-z0-9_-]+)\.json$"
+)
 
 
 def strip_protocol(path: str) -> str:
@@ -39,6 +42,15 @@ def to_iiif_url(path: str) -> str:
     stripped = strip_protocol(path).strip()
     if not stripped:
         return ""
+
+    if path.startswith(_PROTOCOL):
+        resource_url, canvas_name = parse_path(path)
+        if resource_url:
+            if canvas_name:
+                return f"{resource_url.rstrip('/')}/{canvas_name}"
+            return resource_url
+        return ""
+
     if re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", stripped):
         return stripped
     return f"https://{stripped}"
@@ -55,42 +67,48 @@ def parse_path(path: str) -> tuple[str, str | None]:
     Returns:
         A tuple of the manifest URL and optional canvas file name.
     """
-    url = to_iiif_url(path)
-    split = urlsplit(url)
-    if not split.netloc:
+    normalized = path.strip()
+    if not normalized:
         return "", None
 
-    parts = [part for part in split.path.split("/") if part]
-    if not parts:
-        return urlunsplit((split.scheme, split.netloc, "", split.query, split.fragment)), None
+    if normalized.startswith(("https://", "http://")):
+        return _parse_http_path(normalized)
 
-    manifest_idx = next(
-        (idx for idx in range(len(parts) - 1, -1, -1) if parts[idx].lower().endswith(".json")),
-        None,
-    )
+    return _parse_tokenized_path(normalized)
 
-    canvas_name: str | None = None
-    if manifest_idx is None:
-        if len(parts) == 1:
-            manifest_parts = parts
-        else:
-            last_part = parts[-1]
-            if _looks_like_canvas_filename(last_part):
-                manifest_parts = parts[:-1]
-                canvas_name = last_part
-            else:
-                manifest_parts = parts
-    elif manifest_idx == len(parts) - 1:
-        manifest_parts = parts
-    else:
-        manifest_parts = parts[: manifest_idx + 1]
-        canvas_name = parts[manifest_idx + 1]
 
-    manifest_path = "/" + "/".join(manifest_parts) if manifest_parts else ""
-    manifest_url = urlunsplit(
-        (split.scheme, split.netloc, manifest_path, split.query, split.fragment)
-    )
-    return manifest_url, canvas_name
+def make_resource_path(resource_url: str, *, kind: str = "resource") -> str:
+    """Build canonical stateless path for a IIIF resource URL."""
+    normalized_url = resource_url.strip()
+    if not normalized_url:
+        return ""
+
+    if not re.match(r"^https?://", normalized_url):
+        normalized_url = f"https://{normalized_url.removeprefix(_PROTOCOL)}"
+
+    normalized_kind = kind.lower()
+    if normalized_kind not in {"manifest", "collection", "resource"}:
+        normalized_kind = "resource"
+
+    token = encode_resource_url_token(normalized_url)
+    return f"{_PROTOCOL}{normalized_kind}--{token}.json"
+
+
+def canonicalize_resource_path(path: str, resource_url: str, *, kind: str = "resource") -> str:
+    """Return canonical iiif:// resource directory path, preserving nested stateless parents."""
+    if path.startswith(_PROTOCOL):
+        bare = strip_protocol(path).strip().strip("/")
+        parts = [p for p in bare.split("/") if p]
+        idx = _find_resource_segment(parts)
+        if idx is not None and _decode_resource_segment(parts[idx]) is not None:
+            return f"{_PROTOCOL}{'/'.join(parts[: idx + 1])}"
+    return make_resource_path(resource_url, kind=kind)
+
+
+def resource_rooted_output_path(path: str, resource_url: str, *, kind: str = "resource") -> str:
+    """Return protocol-free output name for the last tokenized resource segment."""
+    canonical = canonicalize_resource_path(path, resource_url, kind=kind)
+    return strip_protocol(canonical).rsplit("/", maxsplit=1)[-1]
 
 
 def _looks_like_canvas_filename(segment: str) -> bool:
@@ -168,9 +186,7 @@ def make_collection_member_path(parent_path: str, member: CollectionMemberInfo) 
 
 def is_collection_member_path(path: str) -> bool:
     """Return whether a path matches the stateless collection member shape."""
-    url = to_iiif_url(path)
-    split = urlsplit(url)
-    basename = split.path.rsplit("/", maxsplit=1)[-1]
+    basename = _path_basename(path)
     if not basename.endswith(".json"):
         return False
 
@@ -184,9 +200,7 @@ def is_collection_member_path(path: str) -> bool:
 
 def decode_collection_member_resource_url(path: str) -> str | None:
     """Extract and decode collection member URL from a stateless child path."""
-    url = to_iiif_url(path)
-    split = urlsplit(url)
-    basename = split.path.rsplit("/", maxsplit=1)[-1]
+    basename = _path_basename(path)
 
     if not basename.endswith(".json"):
         return None
@@ -203,3 +217,93 @@ def decode_collection_member_resource_url(path: str) -> str | None:
         return None
 
     return decode_resource_url_token(token)
+
+
+def _parse_http_path(path: str) -> tuple[str, str | None]:
+    split = urlsplit(path)
+    if not split.netloc:
+        return "", None
+
+    parts = [part for part in split.path.split("/") if part]
+    if not parts:
+        return urlunsplit((split.scheme, split.netloc, "", split.query, split.fragment)), None
+
+    manifest_idx = next(
+        (idx for idx in range(len(parts) - 1, -1, -1) if parts[idx].lower().endswith(".json")),
+        None,
+    )
+
+    canvas_name: str | None = None
+    if manifest_idx is None:
+        if len(parts) == 1:
+            manifest_parts = parts
+        else:
+            last_part = parts[-1]
+            if _looks_like_canvas_filename(last_part):
+                manifest_parts = parts[:-1]
+                canvas_name = last_part
+            else:
+                manifest_parts = parts
+    elif manifest_idx == len(parts) - 1:
+        manifest_parts = parts
+    else:
+        manifest_parts = parts[: manifest_idx + 1]
+        canvas_name = parts[manifest_idx + 1]
+
+    manifest_path = "/" + "/".join(manifest_parts) if manifest_parts else ""
+    manifest_url = urlunsplit(
+        (split.scheme, split.netloc, manifest_path, split.query, split.fragment)
+    )
+    return manifest_url, canvas_name
+
+
+def _parse_tokenized_path(path: str) -> tuple[str, str | None]:
+    stripped = strip_protocol(path).strip().strip("/")
+    if not stripped:
+        return "", None
+
+    parts = [part for part in stripped.split("/") if part]
+    resource_idx = _find_resource_segment(parts)
+    if resource_idx is None:
+        return "", None
+
+    resource_url = _decode_resource_segment(parts[resource_idx])
+    if resource_url is None:
+        return "", None
+
+    trailing = parts[resource_idx + 1 :]
+    if not trailing:
+        return resource_url, None
+    if len(trailing) > 1:
+        return "", None
+
+    tail = trailing[0]
+    if _looks_like_resource_segment(tail):
+        return "", None
+
+    return resource_url, tail
+
+
+def _find_resource_segment(parts: list[str]) -> int | None:
+    for idx in range(len(parts) - 1, -1, -1):
+        if _looks_like_resource_segment(parts[idx]):
+            return idx
+    return None
+
+
+def _looks_like_resource_segment(segment: str) -> bool:
+    return _RESOURCE_SEGMENT.fullmatch(segment) is not None
+
+
+def _decode_resource_segment(segment: str) -> str | None:
+    match = _RESOURCE_SEGMENT.fullmatch(segment)
+    if match is None:
+        return None
+    return decode_resource_url_token(match.group("token"))
+
+
+def _path_basename(path: str) -> str:
+    if path.startswith(_PROTOCOL) or not re.match(r"^[a-zA-Z][a-zA-Z0-9+.-]*://", path):
+        stripped = strip_protocol(path).rstrip("/")
+        return stripped.rsplit("/", maxsplit=1)[-1] if stripped else ""
+    return urlsplit(path).path.rsplit("/", maxsplit=1)[-1]

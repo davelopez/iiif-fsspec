@@ -18,7 +18,9 @@ from iiif_fsspec.path import (
     make_canvas_path,
     make_collection_member_path,
     parse_path,
+    resource_rooted_output_path,
     sanitize_filename,
+    strip_protocol,
 )
 from iiif_fsspec.types import (
     CanvasInfo,
@@ -59,8 +61,8 @@ class IIIFFileSystem(AsyncFileSystem):
 
     @classmethod
     def _strip_protocol(cls, path: str) -> str:
-        """Return path unchanged so base fsspec methods match full input style."""
-        return path
+        """Normalize iiif paths to protocol-free tokenized form for fsspec matching."""
+        return strip_protocol(path)
 
     async def _info(self, path: str, **kwargs: object) -> IIIFEntryInfo:
         """Return information about a manifest directory or canvas image."""
@@ -70,9 +72,12 @@ class IIIFFileSystem(AsyncFileSystem):
             raise InvalidPathError(f"Invalid IIIF path: {path}")
 
         if canvas_name is None:
+            resource = await self._get_resource(manifest_url)
+            kind = "collection" if isinstance(resource, CollectionInfo) else "manifest"
+            canonical_name = resource_rooted_output_path(path, manifest_url, kind=kind)
             return IIIFEntryInfo(
                 {
-                    "name": _ensure_protocol_path(path),
+                    "name": canonical_name,
                     "size": 0,
                     "type": "directory",
                     "iiif_manifest": manifest_url,
@@ -86,7 +91,9 @@ class IIIFFileSystem(AsyncFileSystem):
 
         image_url = _canvas_image_url(canvas)
         exact_size = await self._client.get_size(image_url)
-        return _canvas_entry(_ensure_protocol_path(path), canvas, size=exact_size)
+        manifest_path = resource_rooted_output_path(path, manifest_url, kind="manifest")
+        canvas_path = make_canvas_path(manifest_path, canvas)
+        return _canvas_entry(canvas_path, canvas, size=exact_size)
 
     async def _ls(
         self,
@@ -108,13 +115,13 @@ class IIIFFileSystem(AsyncFileSystem):
 
         resource = await self._get_resource(manifest_url)
         if isinstance(resource, CollectionInfo):
-            collection_path = _ensure_protocol_path(path)
+            collection_path = resource_rooted_output_path(path, manifest_url, kind="collection")
             entries: list[IIIFEntryInfo] = []
             for member in resource.members:
                 member_path = make_collection_member_path(collection_path, member)
                 entries.append(_collection_member_entry(member_path, member.id, member))
         else:
-            manifest_path = _ensure_protocol_path(path)
+            manifest_path = resource_rooted_output_path(path, manifest_url, kind="manifest")
             entries = []
             for canvas in resource.canvases:
                 canvas_path = make_canvas_path(manifest_path, canvas)
@@ -208,7 +215,8 @@ class IIIFFileSystem(AsyncFileSystem):
         if decoded_url is None and is_collection_member_path(resource_url):
             raise InvalidPathError(f"Invalid stateless collection member path: {resource_url}")
 
-        resolved_url = decoded_url or resource_url
+        parsed_url, _canvas_name = parse_path(resource_url)
+        resolved_url = decoded_url or parsed_url or resource_url
 
         cached = self._resource_cache.get(resolved_url)
         if cached is not None:
@@ -228,13 +236,6 @@ class IIIFFileSystem(AsyncFileSystem):
             self._manifest_cache[resolved_url] = resource
             self._manifest_cache[resource_url] = resource
         return resource
-
-
-def _ensure_protocol_path(path: str) -> str:
-    """Ensure a path has a protocol prefix, preserving ``https://`` / ``http://`` or defaulting to ``iiif://``."""
-    if path.startswith(("iiif://", "https://", "http://")):
-        return path
-    return f"iiif://{path}"
 
 
 def _canvas_filename(canvas: CanvasInfo) -> str:
