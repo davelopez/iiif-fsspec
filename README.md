@@ -127,6 +127,42 @@ Live integration tests are opt-in:
 uv run pytest -m integration -v
 ```
 
+## Releasing a new version
+
+Publishing is automated via GitHub Actions using trusted OIDC publishing.
+The workflow triggers on `v*` tags, builds the package, and publishes first to TestPyPI then to PyPI.
+
+Steps to release a new version (e.g. `X.Y.Z`):
+
+1. **Bump the version** in `pyproject.toml`:
+
+   ```toml
+   version = "X.Y.Z"
+   ```
+
+2. **Commit and push** the version bump:
+
+   ```bash
+   git add pyproject.toml
+   git commit -m "Version X.Y.Z"
+   git push
+   ```
+
+3. **Create and push an annotated tag**:
+
+   ```bash
+   git tag -a vX.Y.Z -m "Release vX.Y.Z"
+   git push origin vX.Y.Z
+   ```
+
+4. GitHub Actions picks up the tag, builds the distribution, and publishes it to
+   [TestPyPI](https://test.pypi.org/p/iiif-fsspec) first. After that job succeeds the
+   package is published to [PyPI](https://pypi.org/p/iiif-fsspec) automatically.
+   Monitor the run in the **Actions** tab of the repository.
+
+> **Note:** The `testpypi` and `pypi` GitHub Actions environments must be configured in the
+> repository settings with OIDC trusted publishing enabled.
+
 ## License
 
 MIT. See [LICENSE](LICENSE).

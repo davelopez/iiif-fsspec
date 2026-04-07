@@ -1,6 +1,6 @@
 [project]
 name = "iiif-fsspec"
-version = "0.1.0"
+version = "0.1.1"
 description = "Filesystem Spec (fsspec) plugin for IIIF (International Image Interoperability Framework) resources"
 readme = "README.md"
 license = "MIT"
