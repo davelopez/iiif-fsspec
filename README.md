@@ -1,59 +1,33 @@
 # iiif-fsspec
 
-`iiif-fsspec` is a read-only [`fsspec`](https://filesystem-spec.readthedocs.io/) plugin for
-[IIIF](https://iiif.io/) (International Image Interoperability Framework) resources.
+iiif-fsspec is a read-only [fsspec](https://filesystem-spec.readthedocs.io/) plugin for
+[IIIF](https://iiif.io/) resources.
 
-It exposes a IIIF manifest as a directory and canvas images as files.
+It lets you treat IIIF manifests like directories and canvas images like files, so you can use
+familiar filesystem operations such as `ls`, `open`, and `cat_file`.
 
-Two path styles are accepted interchangeably:
+## What You Can Do
 
-| Style | Example |
-|-------|---------|
-| `iiif://` (registered fsspec protocol) | `iiif://example.org/iiif/manifest.json` |
-| `https://` / `http://` (raw manifest URL) | `https://example.org/iiif/manifest.json` |
+- List canvases in a IIIF manifest
+- Read full images or byte ranges
+- Browse IIIF collections
+- Use either raw manifest URLs as input or tokenized paths returned by the filesystem
 
-Returned paths always preserve the style of the caller's input:
+Supported versions:
 
-- `iiif://example.org/iiif/manifest.json` → directory
-- `iiif://example.org/iiif/manifest.json/canvas-one.jpg` → file
-- `https://example.org/iiif/manifest.json` → directory
-- `https://example.org/iiif/manifest.json/canvas-one.jpg` → file
-
-The plugin supports both IIIF Presentation API v2 and v3 manifests with automatic version
-detection.
-
-## Overview
-
-This package lets data-access systems use IIIF manifests through the standard fsspec filesystem
-interface. That means you can call `ls`, `info`, `open`, and `cat_file` on IIIF URLs and treat
-them like regular filesystem paths.
-
-Current scope:
-
-- Read-only operations
-- Manifest listing to canvas file entries
-- Collection listing to stateless child paths
-- Full image reads and range reads
-- In-memory manifest caching
-
-When a collection is listed, child entries keep a resolvable stateless path in `name`, preserve
-the human-friendly label in `iiif_label`, and keep the IIIF identifier in `iiif_id`. The path
-remains self-contained so a value returned from one filesystem instance can be opened or listed
-from a fresh instance without prior cache warm-up. Malformed stateless collection paths raise
-`InvalidPathError`.
+- IIIF Presentation API v2
+- IIIF Presentation API v3
 
 ## Installation
 
-Using `uv`:
+```bash
+pip install iiif-fsspec
+```
+
+Or with uv:
 
 ```bash
 uv add iiif-fsspec
-```
-
-Using `pip`:
-
-```bash
-pip install iiif-fsspec
 ```
 
 ## Quick Start
@@ -63,179 +37,96 @@ import fsspec
 
 fs = fsspec.filesystem("iiif")
 
-# Both https:// and iiif:// paths are accepted; returned names mirror the input style.
+manifest_url = "https://example.org/iiif/manifest.json"
+entries = fs.ls(manifest_url, detail=True)
 
-# List canvases using a raw manifest URL
-entries = fs.ls("https://example.org/iiif/manifest.json", detail=True)
+print(entries[0]["name"])
+# manifest--<token>.json/canvas-one.jpg
+print(entries[0]["iiif_label"])
+# "Canvas 1"
 
-# Read a canvas image
-with fs.open("https://example.org/iiif/manifest.json/canvas-one.jpg", "rb") as handle:
-	image_bytes = handle.read()
+with fs.open(entries[0]["name"], "rb") as handle:
+    first_kb = handle.read(1024)
+
+print(len(first_kb))
 ```
 
-## Usage Examples
+## Common Usage
 
-### Python API
+List canvas paths:
 
 ```python
 from iiif_fsspec import IIIFFileSystem
 
 fs = IIIFFileSystem()
-
-# Using a raw https:// manifest URL
 paths = fs.ls("https://example.org/iiif/manifest.json")
-print(paths)  # ['https://example.org/iiif/manifest.json/canvas-one.jpg', ...]
+print(paths)
+```
 
-chunk = fs.cat_file("https://example.org/iiif/manifest.json/canvas-one.jpg", start=0, end=1024)
+Read a byte range:
+
+```python
+# Assuming paths[0] is a canvas image path
+chunk = fs.cat_file(paths[0], start=0, end=1024)
 print(len(chunk))
 ```
 
-### fsspec.open Integration
+## Examples
 
-```python
-import fsspec
-
-# Use the iiif:// scheme with fsspec.open (routes to IIIFFileSystem via entry-point)
-with fsspec.open("iiif://example.org/iiif/manifest.json/canvas-one.jpg", "rb") as handle:
-	first_kb = handle.read(1024)
-
-# Or instantiate IIIFFileSystem directly with a plain https:// URL
-from iiif_fsspec import IIIFFileSystem
-
-fs = IIIFFileSystem()
-with fs.open("https://example.org/iiif/manifest.json/canvas-one.jpg", "rb") as handle:
-	first_kb = handle.read(1024)
-```
-
-## Real-World Examples
-
-The [examples](examples/) folder includes runnable scripts that browse a real IIIF manifest:
-
-- `https://api.irht.cnrs.fr/ark:/63955/fbkub82u5bw7/manifest.json`
-
-From the repository root:
+Runnable scripts are in [examples](examples/):
 
 ```bash
 uv run python examples/browse_manifest.py
+uv run python examples/browse_download_cli.py
 uv run python examples/read_first_canvas.py
 uv run python examples/download_canvas.py --index 1 --output /tmp/canvas-1.jpg
 ```
 
-To target a different manifest:
+Use a different manifest:
 
 ```bash
 uv run python examples/browse_manifest.py --manifest-url https://example.org/iiif/manifest.json
 ```
 
-## Supported IIIF Versions
+## Path Format
 
-- IIIF Presentation API v2
-- IIIF Presentation API v3
+Returned paths are protocol-free tokenized names that are safe to reuse with `open` and `ls`:
 
-Version detection uses manifest metadata (`@context`, `type`, and `@type`) and dispatches to the
-appropriate parser.
+- Manifest path: `manifest--<token>.json`
+- Canvas path: `manifest--<token>.json/canvas-one.jpg`
+- Collection child: `collection--<token>.json/manifest-book-1--<token>.json`
+
+Raw `https://` and `http://` manifest URLs are accepted as entry inputs.
 
 ## Security Notes
 
-`iiif-fsspec` fetches manifests, image resources, and `info.json` endpoints from remote servers.
-Treat manifest content as a source of outbound network locations, not just metadata.
+iiif-fsspec fetches remote manifests and image resources. Treat manifest content as untrusted
+network input.
 
-Current network policy:
+- Only `http` and `https` resource URLs are accepted
+- `http -> https` redirects are allowed
+- `https -> http` redirects are rejected
+- Non-HTTP(S) redirect targets are rejected
 
-- Only `http` and `https` resource URLs are accepted.
-- Redirects are followed only through an explicit policy in the HTTP client.
-- `http -> https` redirects are allowed.
-- `https -> http` redirects are rejected.
-- Non-HTTP(S) redirect targets are rejected.
-
-Operational implications:
-
-- A manifest can point to image or IIIF service URLs on arbitrary hosts.
-- Redirects can move a request to a different host, as long as the redirect stays within the
-	allowed transport policy above.
-- This package is intended for public IIIF resources and does not add host allowlisting or SSRF
-	protections on top of normal URL validation.
-
-If you process manifests from untrusted sources or run this library in a sensitive environment,
-consider wrapping it with your own outbound network controls, such as host allowlists, egress
-filtering, or sandboxing.
-
-## Architecture
-
-Main modules:
-
-- `src/iiif_fsspec/filesystem.py`: fsspec filesystem implementation
-- `src/iiif_fsspec/iiif_file.py`: read-only file object for image access
-- `src/iiif_fsspec/client.py`: async HTTP client wrapper (`httpx`)
-- `src/iiif_fsspec/manifest.py`: IIIF v2/v3 manifest parsing
-- `src/iiif_fsspec/path.py`: fsspec path <-> IIIF URL resolution
-- `src/iiif_fsspec/types.py`: dataclasses and parser protocol
-- `src/iiif_fsspec/exceptions.py`: package exception hierarchy
+If you run in a sensitive environment, add your own outbound network controls (for example,
+allowlists or egress filtering).
 
 ## Development
 
-Install dependencies:
-
 ```bash
 uv sync --dev
-```
-
-Run checks:
-
-```bash
 uv run ruff check src/ tests/
 uv run ruff format --check src/ tests/
 uv run mypy src/ tests/
-uv run pytest --cov=iiif_fsspec --cov-report=term-missing
+uv run pytest
+```
 
-# Run live-network integration tests (opt-in, requires network access)
+Live integration tests are opt-in:
+
+```bash
 uv run pytest -m integration -v
 ```
 
-CI test strategy:
-
-- Default CI runs fast deterministic tests and excludes live integration tests.
-- A separate `Integration` workflow runs real-network tests against:
-	`https://iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json`.
-- The integration workflow is triggered manually (`workflow_dispatch`) and on a low-frequency schedule.
-
-Pre-commit hooks are configured in `.pre-commit-config.yaml`.
-
-## Release
-
-This project publishes to TestPyPI and PyPI from tags matching `v*` via
-GitHub Actions trusted publishing (OIDC).
-
-Release steps:
-
-```bash
-# 1) Bump version in both files:
-#    - pyproject.toml
-#    - src/iiif_fsspec/__init__.py
-
-# 2) Run checks
-uv run ruff check src/ tests/
-uv run mypy src/ tests/
-uv run pytest
-
-# 3) Commit and push
-git add pyproject.toml src/iiif_fsspec/__init__.py
-git commit -m "Release vX.Y.Z"
-git push
-
-# 4) Create and push a tag (final or prerelease)
-git tag vX.Y.Z
-git push origin vX.Y.Z
-```
-
-
 ## License
 
-MIT. See `LICENSE`.
-
-## Acknowledgments
-
-- [fsspec](https://filesystem-spec.readthedocs.io/)
-- [httpx](https://www.python-httpx.org/)
-- [piffle](https://github.com/Princeton-CDH/piffle)
-- IIIF community and specification authors
+MIT. See [LICENSE](LICENSE).

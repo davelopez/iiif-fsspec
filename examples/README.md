@@ -2,7 +2,7 @@
 
 These scripts use a real IIIF manifest:
 
-- https://api.irht.cnrs.fr/ark:/63955/fbkub82u5bw7/manifest.json
+- https://iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json
 
 Run from repository root:
 
