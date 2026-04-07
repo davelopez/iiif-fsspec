@@ -10,11 +10,13 @@ from pathlib import Path
 import pytest
 
 from iiif_fsspec.filesystem import IIIFFileSystem
+from iiif_fsspec.path import make_resource_path
 
 pytestmark = pytest.mark.integration
 
 MANIFEST_URL = "https://iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json"
-MANIFEST_PATH = "iiif://iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json"
+MANIFEST_PATH = make_resource_path(MANIFEST_URL, kind="manifest")
+OUTPUT_MANIFEST_PATH = MANIFEST_PATH.removeprefix("iiif://")
 BODLEIAN_COLLECTION_PATH = "https://iiif.bodleian.ox.ac.uk/iiif/collection/top"
 BODLEIAN_MANIFEST_PATH = (
     "https://iiif.bodleian.ox.ac.uk/iiif/manifest/b73ca01f-aac8-4916-a7c6-3c8e67939a66.json"
@@ -135,7 +137,7 @@ def test_find_walk_glob_expand_and_du(
     walked = list(live_fs.walk(MANIFEST_PATH))
     assert len(walked) >= 1
     root, dirs, files = walked[0]
-    assert str(root).endswith("iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json")
+    assert str(root) == OUTPUT_MANIFEST_PATH
     assert isinstance(dirs, list)
     assert isinstance(files, list)
 
@@ -147,9 +149,7 @@ def test_find_walk_glob_expand_and_du(
     expanded = live_fs.expand_path(first_canvas_path)
     assert isinstance(expanded, list)
     assert len(expanded) == 1
-    assert str(expanded[0]).endswith(
-        "iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json/p1.png"
-    )
+    assert str(expanded[0]) == first_canvas_path
 
     total_size = live_fs.du(MANIFEST_PATH, total=True)
     assert isinstance(total_size, int)

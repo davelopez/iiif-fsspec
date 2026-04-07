@@ -7,11 +7,13 @@ import pytest
 from iiif_fsspec.exceptions import InvalidPathError
 from iiif_fsspec.filesystem import IIIFFileSystem
 from iiif_fsspec.manifest import parse_manifest
+from iiif_fsspec.path import make_resource_path
 
 from .conftest import JSONDict
 
-MANIFEST_PATH = "iiif://example.org/iiif/manifest.json"
 MANIFEST_URL = "https://example.org/iiif/manifest.json"
+MANIFEST_PATH = make_resource_path(MANIFEST_URL, kind="manifest")
+OUTPUT_MANIFEST_PATH = MANIFEST_PATH.removeprefix("iiif://")
 
 
 def _prime_manifest_cache(iiif_fs: IIIFFileSystem, sample_manifest_v3: JSONDict) -> None:
@@ -24,7 +26,7 @@ def test_ls_on_canvas_path_returns_name_only(
 ) -> None:
     _prime_manifest_cache(iiif_fs, sample_manifest_v3)
     names = iiif_fs.ls(f"{MANIFEST_PATH}/canvas-one.jpg", detail=False)
-    assert names == [f"{MANIFEST_PATH}/canvas-one.jpg"]
+    assert names == [f"{OUTPUT_MANIFEST_PATH}/canvas-one.jpg"]
 
 
 def test_info_missing_canvas_raises(
@@ -51,6 +53,6 @@ def test_cat_file_missing_canvas_raises(
 
 
 def test_ls_with_malformed_stateless_member_path_raises(iiif_fs: IIIFFileSystem) -> None:
-    bad_path = "iiif://example.org/iiif/collection/top/manifest-books--bad$$.json"
+    bad_path = "iiif://manifest-books--bad$$.json"
     with pytest.raises(InvalidPathError):
         iiif_fs.ls(bad_path)

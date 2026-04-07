@@ -5,6 +5,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+from iiif_fsspec.path import make_resource_path, parse_path
+
 DEFAULT_MANIFEST_URL = "https://iiif.io/api/cookbook/recipe/0001-mvm-image/manifest.json"
 
 
@@ -16,8 +18,11 @@ if str(SRC_PATH) not in sys.path:
 
 
 def to_iiif_path(manifest_url: str) -> str:
-    """Convert an HTTP(S) manifest URL to an iiif:// path accepted by the filesystem."""
+    """Convert a manifest URL or canonical iiif path into canonical tokenized iiif path."""
     if manifest_url.startswith("iiif://"):
-        return manifest_url
-    cleaned = manifest_url.removeprefix("https://").removeprefix("http://")
-    return f"iiif://{cleaned}"
+        parsed_url, canvas_name = parse_path(manifest_url)
+        if parsed_url and canvas_name is None:
+            return manifest_url
+        legacy = manifest_url.removeprefix("iiif://")
+        return make_resource_path(f"https://{legacy}", kind="manifest")
+    return make_resource_path(manifest_url, kind="manifest")

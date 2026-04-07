@@ -9,13 +9,14 @@ import pytest
 from pytest_httpx import HTTPXMock
 
 from iiif_fsspec.filesystem import IIIFFileSystem
+from iiif_fsspec.path import make_resource_path
 
 from .conftest import JSONDict
 
 pytestmark = pytest.mark.httpx_mock(assert_all_responses_were_requested=False)
 
-MANIFEST_PATH = "iiif://example.org/iiif/manifest.json"
 MANIFEST_URL = "https://example.org/iiif/manifest.json"
+MANIFEST_PATH = make_resource_path(MANIFEST_URL, kind="manifest")
 IMAGE_URL_1 = "https://images.example.org/iiif/2/abc123/full/max/0/default.jpg"
 IMAGE_BYTES = b"abcdefghijklmnopqrstuvwxyz"
 
