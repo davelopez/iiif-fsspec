@@ -101,7 +101,7 @@ def canonicalize_resource_path(path: str, resource_url: str, *, kind: str = "res
         parts = [p for p in bare.split("/") if p]
         idx = _find_resource_segment(parts)
         if idx is not None and _decode_resource_segment(parts[idx]) is not None:
-            return f"{_PROTOCOL}{'/'.join(parts[:idx + 1])}"
+            return f"{_PROTOCOL}{'/'.join(parts[: idx + 1])}"
     return make_resource_path(resource_url, kind=kind)
 
 
